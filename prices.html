@@ -304,16 +304,26 @@ async function loadPrices(){
     document.getElementById('itemCount').textContent = data.length;
     document.getElementById('lastUpdate').textContent = toJalaliDate(data[0].update_date);
 
-    rowsEl.innerHTML = data.map(item => `
-      <div class="row">
-        <div>
-          <div class="mat">${item.material}</div>
-          <div class="grade">${item.grade || ''}</div>
+    const SLUG_MAP = {
+        "PP":"pp","PP نساجی":"pp-nassaji","PP شیمیایی":"pp-shimiyai",
+        "PE سنگین (HDPE)":"pe-hdpe","PE سبک (LDPE)":"pe-ldpe","PE سبک خطی (LLDPE)":"pe-lldpe",
+        "PVC":"pvc","PET":"pet","PS":"ps","PS (GPPS)":"ps-gpps","PC":"pc"
+      };
+      rowsEl.innerHTML = data.map(item => {
+        const slug = SLUG_MAP[item.material];
+        const specLink = slug ? `<a class="spec-btn" href="materials.html#${slug}">مشخصات فنی</a>` : '';
+        return `
+        <div class="row">
+          <div>
+            <div class="mat">${item.material}</div>
+            <div class="grade">${item.grade || ''}</div>
+          </div>
+          <div class="price">${formatPrice(item.price_toman)}<span class="unit"> تومان / ${item.unit || 'kg'}</span></div>
+          <div class="updated">${toJalaliDate(item.update_date)}</div>
+          ${specLink}
         </div>
-        <div class="price">${formatPrice(item.price_toman)}<span class="unit">تومان / ${item.unit || 'kg'}</span></div>
-        <div class="updated">${toJalaliDate(item.update_date)}</div>
-      </div>
-    `).join('');
+        `;
+      }).join('');
 
   }catch(err){
     rowsEl.innerHTML = `<div class="error">مشکلی در دریافت قیمت‌ها پیش آمد. لطفاً دوباره تلاش کنید.</div>`;
