@@ -102,7 +102,12 @@
   .spin { animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
-</head>
+ <script>
+window.onerror = function(msg, url, line, col, error) {
+  alert('خطا: ' + msg + '\nخط: ' + line + '\nجزئیات: ' + (error && error.stack ? error.stack.slice(0,300) : ''));
+  return false;
+};
+ </script></head>
 <body>
 <div id="root"></div>
 
