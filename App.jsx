@@ -1099,7 +1099,7 @@ function PostAd({ form, setForm, onSubmit, error, myCount, gate, setGate, goPric
           </div>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="pm-panel rounded-xl p-5 md:p-6 grid md:grid-cols-2 gap-4">
+        <form onSubmit={onSubmit} className="pm-panel rounded-xl p-5 md:p-6 grid md:grid-cols-2 gap-4overflow-hidden">
           {/* فیلد مخفی ضد ربات - کاربران واقعی این را نمی‌بینند و پر نمی‌کنند */}
           <input type="text" name="website" value={form.website || ""} onChange={set("website")} tabIndex="-1" autoComplete="off" aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }} />
           <Field label="عنوان آگهی" full><input value={form.title} onChange={set("title")} placeholder="مثلاً: گرانول HDPE بادی درجه یک" className="pm-input" /></Field>
