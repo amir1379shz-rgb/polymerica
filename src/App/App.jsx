@@ -1,11 +1,19 @@
 import React, { Suspense, lazy } from 'react';
+import Header from '../components/Header.jsx';
+import Footer from '../components/Footer.jsx';
 
 const FullApp = lazy(() => import('../../App.jsx'));
 
 export default function AppWrapper() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">در حال بارگذاری...</div>}>
-      <FullApp />
-    </Suspense>
+    <div className="min-h-screen flex flex-col bg-pm-cream text-pm-primary">
+      <Header />
+      <main className="flex-1">
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">در حال بارگذاری...</div>}>
+          <FullApp />
+        </Suspense>
+      </main>
+      <Footer />
+    </div>
   );
 }
