@@ -2,7 +2,7 @@
 export default {
   content: [
     "./polymarket-2.html",
-    "./src/**/*.{js,jsx}",
+    "./*.{js,jsx}",
   ],
   theme: {
     extend: {},
