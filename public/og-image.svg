@@ -1,6 +1,0 @@
-/* Open Graph image sample - simple SVG fallback */
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
-  <rect width="100%" height="100%" fill="#1B3358"/>
-  <text x="60" y="120" font-family="Vazirmatn, sans-serif" font-size="56" fill="#EDE4D2" font-weight="800">پلیمریکا</text>
-  <text x="60" y="200" font-family="Vazirmatn, sans-serif" font-size="28" fill="#EDE4D2">بازار تخصصی پلیمر و پلاستیک</text>
-</svg>
