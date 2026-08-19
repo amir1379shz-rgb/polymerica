@@ -1,4 +1,4 @@
-Import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 /* ---------- Supabase connection (real shared database) ---------- */
