@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+Import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 /* ---------- Supabase connection (real shared database) ---------- */
@@ -1099,7 +1099,7 @@ function PostAd({ form, setForm, onSubmit, error, myCount, gate, setGate, goPric
           </div>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="pm-panel rounded-xl p-5 md:p-6 grid md:grid-cols-2 gap-4overflow-hidden">
+        <form onSubmit={onSubmit} className="pm-panel rounded-xl p-5 md:p-6 grid md:grid-cols-2 gap-4 overflow-hidden">
           {/* فیلد مخفی ضد ربات - کاربران واقعی این را نمی‌بینند و پر نمی‌کنند */}
           <input type="text" name="website" value={form.website || ""} onChange={set("website")} tabIndex="-1" autoComplete="off" aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }} />
           <Field label="عنوان آگهی" full><input value={form.title} onChange={set("title")} placeholder="مثلاً: گرانول HDPE بادی درجه یک" className="pm-input" /></Field>
@@ -1337,55 +1337,70 @@ function CheckoutModal({ plan, onClose, onComplete, user, openLogin }) {
     e.preventDefault();
     setErr("");
     const digits = card.replace(/\s/g, "");
-    if (digits.length < 16 || !/^\d+$/.test(digits)) { setErr("شماره کارت را به‌صورت صحیح (۱۶ رقم) وارد کنید."); return; }
+    if (digits.length < 16 || !/^\d+$/.test(digits)) {
+      setErr("لطفاً شماره کارت ۱۶ رقمی معتبر وارد کنید.");
+      return;
+    }
     setStep("processing");
-    setTimeout(() => setStep("done"), 1500);
+    setTimeout(() => {
+      setStep("done");
+      setTimeout(() => {
+        onComplete();
+      }, 1200);
+    }, 1800);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={step==="form" ? onClose : undefined}>
-      <div className="pm-panel rounded-xl w-full max-w-md" onClick={e=>e.stopPropagation()}>
-        <div className="p-5 border-b pm-line flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold"><Icon name="card" size={17} className="pm-navy" /> تکمیل خرید اشتراک</div>
-          {step==="form" && <button onClick={onClose}><Icon name="x" size={18} /></button>}
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="pm-panel rounded-xl w-full max-w-md p-6" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b pm-line pb-4 mb-4">
+          <div className="font-bold flex items-center gap-2">
+            <Icon name="card" size={18} className="pm-navy" />
+            پرداخت و فعال‌سازی اشتراک
+          </div>
+          <button onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
 
         {step === "form" && (
-          <form onSubmit={pay} className="p-5 flex flex-col gap-4">
-            <div className="pm-panel-2 rounded-lg p-3.5 flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-sm">پلن {plan.name}</div>
-                <div className="pm-muted text-xs">{plan.period || "یک‌بار"}</div>
-              </div>
-              <div className="pm-mono font-bold pm-navy">{plan.priceLabel} تومان</div>
+          <form onSubmit={pay} className="flex flex-col gap-4">
+            <div className="pm-panel-2 rounded-lg p-3 flex items-center justify-between text-sm">
+              <span className="pm-muted">پلن انتخابی:</span>
+              <span className="font-bold pm-navy">{plan.name} ({plan.priceLabel} تومان)</span>
             </div>
-            <Field label="شماره کارت بانکی">
-              <input className="pm-input pm-mono" placeholder="XXXX XXXX XXXX XXXX" value={card}
-                onChange={e => { const v = e.target.value.replace(/\D/g,"").slice(0,16).replace(/(.{4})/g,"$1 ").trim(); setCard(v); }} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="تاریخ انقضا"><input className="pm-input pm-mono" placeholder="MM/YY" /></Field>
-              <Field label="رمز دوم / CVV2"><input className="pm-input pm-mono" placeholder="***" /></Field>
+            <div>
+              <label className="block text-xs pm-muted mb-1 font-medium">شماره کارت بانک (آزمایشی)</label>
+              <input
+                value={card}
+                onChange={e => setCard(e.target.value)}
+                placeholder="6037 - ____ - ____ - ____"
+                className="pm-input pm-mono text-center tracking-widest"
+                maxLength={19}
+              />
             </div>
-            {err && <div className="text-sm text-[#8B3A32] bg-[#F7EAE7] border border-[#E3C4BC] rounded-lg px-3 py-2">{err}</div>}
-            <button className="pm-btn-gold rounded-lg py-3 text-sm font-bold">پرداخت و فعال‌سازی اشتراک</button>
-            <p className="pm-muted text-[10px] leading-5 text-center">این بخش صرفاً شبیه‌سازی پرداخت برای نمایش عملکرد سامانه است و به درگاه بانکی واقعی متصل نیست. برای راه‌اندازی واقعی، اتصال به درگاه‌هایی مانند زرین‌پال یا آیدی‌پی لازم است.</p>
+            {err && <div className="text-xs text-[#8B3A32] bg-[#F7EAE7] p-2 rounded-lg">{err}</div>}
+            <div className="pm-muted text-[11px] leading-5">
+              * این یک درگاه شبیه‌سازی‌شده برای تست سامانه است و هیچ مبلغ واقعی کسر نخواهد شد.
+            </div>
+            <button type="submit" className="pm-btn-primary rounded-lg py-3 text-sm font-bold mt-2">
+              تایید و پرداخت {plan.priceLabel} تومان
+            </button>
           </form>
         )}
 
         {step === "processing" && (
-          <div className="p-10 flex flex-col items-center gap-3">
-            <Icon name="loader" size={28} className="pm-navy spin" />
-            <div className="text-sm pm-muted">در حال ارتباط با درگاه پرداخت...</div>
+          <div className="py-12 text-center flex flex-col items-center gap-3">
+            <Icon name="loader" size={28} className="spin pm-navy" />
+            <div className="font-medium text-sm">در حال ارتباط با درگاه پرداخت...</div>
           </div>
         )}
 
         {step === "done" && (
-          <div className="p-8 flex flex-col items-center gap-3 text-center">
-            <div className="w-14 h-14 rounded-full pm-badge-verified flex items-center justify-center"><Icon name="check" size={26} className="pm-green" /></div>
+          <div className="py-10 text-center flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-[#EAF3DE] flex items-center justify-center text-[#3B6C1D]">
+              <Icon name="check" size={24} />
+            </div>
             <div className="font-bold text-lg">پرداخت با موفقیت انجام شد</div>
-            <p className="pm-muted text-sm mb-2">اشتراک «{plan.name}» برای حساب کاربری شما فعال شد.</p>
-            <button onClick={onComplete} className="pm-btn-primary rounded-lg px-6 py-2.5 text-sm">بازگشت به سامانه</button>
+            <p className="pm-muted text-xs">اشتراک شما فعال گردید.</p>
           </div>
         )}
       </div>
@@ -1394,115 +1409,88 @@ function CheckoutModal({ plan, onClose, onComplete, user, openLogin }) {
 }
 
 function Pricing({ showToast, subscription, invoices, openCheckout, onCancel }) {
-  const [openFaq, setOpenFaq] = useState(0);
-  const faqs = [
-    ["الان همه چیز واقعاً رایگانه؟", "بله، در دوره راه‌اندازی سامانه، ثبت آگهی و مشاهده اطلاعات تماس برای همه کاربران کاملاً نامحدود و رایگان است؛ پلن‌های زیر برای بعد از این دوره طراحی شده‌اند."],
-    ["نشان «تاییدشده» چگونه اعطا می‌شود؟", "پس از فعال‌سازی اشتراک حرفه‌ای یا عمده، نشان تاییدشده به‌صورت خودکار روی آگهی‌های شما نمایش داده می‌شود."],
-    ["روش پرداخت اشتراک چیست؟", "در نسخه فعلی، پرداخت به‌صورت نمایشی شبیه‌سازی شده است. در نسخه نهایی، از درگاه‌های معتبر بانکی برای تسویه استفاده خواهد شد."],
-    ["آیا می‌توانم اشتراک را لغو کنم؟", "بله، از همین صفحه در هر زمان می‌توانید اشتراک را به پلن پایه بازگردانید."],
-  ];
-  const current = planInfo(subscription.plan);
+  const currentPlan = subscription.plan;
   return (
-    <main className="max-w-6xl mx-auto px-4 md:px-6 py-14">
-      <div className="rounded-2xl px-6 py-5 mb-8 max-w-2xl mx-auto flex items-center gap-3" style={{background:"rgba(47,107,79,0.08)", border:"1px solid rgba(47,107,79,0.3)"}}>
-        <Icon name="sparkles" size={20} className="pm-green shrink-0" />
-        <div>
-          <div className="font-bold text-sm pm-green">فعلاً همه‌چیز رایگانه 🎉</div>
-          <div className="pm-muted text-xs leading-6 mt-0.5">در دوره راه‌اندازی سامانه، ثبت آگهی نامحدود و مشاهده اطلاعات تماس بدون هیچ محدودیتی برای همه کاربران رایگان است. پلن‌های زیر برای آینده سامانه در نظر گرفته شده‌اند.</div>
-        </div>
-      </div>
-      <div className="text-center mb-10">
-        <div className="pm-mono text-xs pm-gold mb-2 tracking-wider">تعرفه اشتراک</div>
-        <h1 className="text-3xl font-extrabold mb-3">پلن مناسب حجم کسب‌وکار خود را انتخاب کنید</h1>
-        <p className="pm-muted max-w-xl mx-auto leading-7">پلن‌های زیر امکانات ویژه (نشان تاییدشده، اولویت نمایش) را برای معامله‌گران و کارخانه‌هایی که حجم بالایی از خرید و فروش دارند اضافه می‌کنند.</p>
+    <main className="max-w-6xl mx-auto px-4 md:px-6 py-10">
+      <div className="mb-8 text-center max-w-xl mx-auto">
+        <div className="pm-mono text-xs pm-gold mb-1.5 tracking-wider">PLANS & PRICING</div>
+        <h1 className="text-2xl md:text-3xl font-extrabold mb-2">تعرفه اشتراک و ارتقای حساب</h1>
+        <p className="pm-muted text-sm leading-7">با ارتقا به پلن‌های حرفه‌ای، نشان تاییدشده دریافت کنید و آگهی‌های خود را در اولویت دید خریداران قرار دهید.</p>
       </div>
 
-      {subscription.plan !== "free" && (
-        <div className="pm-panel rounded-xl p-5 mb-10 max-w-2xl mx-auto flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <Icon name="crown" size={20} className="pm-gold" />
-            <div>
-              <div className="font-bold text-sm">اشتراک فعال شما: {current.name}</div>
-              <div className="pm-muted text-xs">تعداد فاکتورهای پرداخت‌شده: {invoices.length}</div>
-            </div>
-          </div>
-          <button onClick={onCancel} className="pm-btn-ghost rounded-lg px-4 py-2 text-xs">لغو اشتراک</button>
-        </div>
-      )}
-
-      <div className="grid md:grid-cols-3 gap-5 mb-14">
+      <div className="grid md:grid-cols-3 gap-5 mb-12">
         {PLANS.map(p => {
-          const active = subscription.plan === p.id;
+          const isCurrent = currentPlan === p.id;
           return (
-            <div key={p.id} className={`rounded-2xl p-6 flex flex-col ${p.highlight ? "border-2" : "pm-panel"}`} style={p.highlight ? {background:"#FFFFFF", borderColor:"#A9812F"} : {}}>
-              {p.highlight && !active && <span className="self-start pm-badge-recycled text-[11px] px-2.5 py-1 rounded-full font-medium mb-4">پرطرفدارترین</span>}
-              {active && <span className="self-start pm-badge-verified text-[11px] px-2.5 py-1 rounded-full font-medium mb-4">پلن فعلی شما</span>}
-              <div className="font-bold text-lg mb-1">{p.name}</div>
-              <div className="flex items-baseline gap-1.5 mb-5"><span className="pm-mono text-3xl font-extrabold">{p.priceLabel}</span>{p.period && <span className="pm-muted text-xs">{p.period}</span>}</div>
-              <ul className="flex flex-col gap-2.5 mb-7 flex-1">
-                {p.features.map(f => <li key={f} className="flex items-start gap-2 text-sm"><Icon name="check" size={15} className="pm-green mt-0.5 shrink-0" /><span className="pm-muted">{f}</span></li>)}
-              </ul>
-              <button onClick={() => p.id !== "free" && !active && openCheckout(p.id)} disabled={p.id==="free" || active}
-                className={`rounded-lg py-2.5 text-sm font-medium ${(p.id==="free" || active) ? "pm-line border pm-muted cursor-default" : p.highlight ? "pm-btn-gold" : "pm-btn-ghost"}`}>
-                {active ? "پلن فعلی شما" : p.cta}
-              </button>
+            <div key={p.id} className={`pm-panel rounded-xl p-6 flex flex-col justify-between relative ${p.highlight ? "ring-2 ring-[#1B3358]" : ""}`}>
+              {p.highlight && <span className="absolute -top-3 right-6 bg-[#1B3358] text-white text-[10px] font-bold px-3 py-0.5 rounded-full">پیشنهاد ویژه</span>}
+              <div>
+                <div className="font-bold text-lg mb-1">{p.name}</div>
+                <div className="mb-4">
+                  <span className="pm-mono text-2xl font-extrabold pm-navy">{p.priceLabel}</span>
+                  <span className="pm-muted text-xs mr-1">{p.period}</span>
+                </div>
+                <ul className="flex flex-col gap-2.5 text-xs pm-muted mb-6">
+                  {p.features.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <Icon name="check" size={14} className="pm-green shrink-0" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {isCurrent ? (
+                <div className="flex flex-col gap-2">
+                  <div className="pm-badge-new rounded-lg py-2.5 text-center text-xs font-bold">پلن فعلی شما</div>
+                  {p.id !== "free" && (
+                    <button onClick={onCancel} className="text-xs text-[#8B3A32] underline hover:no-underline text-center">لغو اشتراک</button>
+                  )}
+                </div>
+              ) : (
+                <button onClick={() => openCheckout(p.id)} className={`w-full rounded-lg py-2.5 text-xs font-bold ${p.highlight ? "pm-btn-primary" : "pm-btn-ghost"}`}>
+                  {p.cta}
+                </button>
+              )}
             </div>
           );
         })}
       </div>
 
       {invoices.length > 0 && (
-        <div className="max-w-2xl mx-auto mb-14">
-          <h2 className="text-xl font-bold mb-4 text-center flex items-center justify-center gap-2"><Icon name="receipt" size={18} className="pm-navy" /> فاکتورهای پرداخت</h2>
-          <div className="pm-panel rounded-xl overflow-hidden overflow-x-auto pm-scrollbar">
-            <table className="w-full pm-table text-sm">
-              <thead><tr><th>شماره فاکتور</th><th>پلن</th><th>مبلغ (تومان)</th><th>تاریخ</th></tr></thead>
-              <tbody>
-                {invoices.map(inv => (
-                  <tr key={inv.id}>
-                    <td className="pm-mono">{inv.id}</td>
-                    <td>{inv.plan}</td>
-                    <td className="pm-mono">{Number(inv.amount).toLocaleString("fa-IR")}</td>
-                    <td className="pm-mono text-xs">{new Date(inv.date || inv.created_at).toLocaleDateString("fa-IR")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="pm-panel rounded-xl p-5 max-w-2xl mx-auto">
+          <div className="font-bold text-sm mb-3 flex items-center gap-2">
+            <Icon name="receipt" size={16} className="pm-navy" />
+            سوابق پرداخت و فاکتورها
+          </div>
+          <div className="flex flex-col gap-2">
+            {invoices.map(inv => (
+              <div key={inv.id} className="pm-panel-2 rounded-lg p-3 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-semibold">{inv.plan}</span>
+                  <span className="pm-mono pm-muted mr-2">({inv.id})</span>
+                </div>
+                <div className="pm-mono font-bold">{Number(inv.amount).toLocaleString("fa-IR")} تومان</div>
+              </div>
+            ))}
           </div>
         </div>
       )}
-
-      <div className="max-w-2xl mx-auto">
-        <h2 className="text-xl font-bold mb-4 text-center">پرسش‌های متداول</h2>
-        <div className="flex flex-col gap-2">
-          {faqs.map(([q,a],i) => (
-            <div key={i} className="pm-panel rounded-lg overflow-hidden">
-              <button onClick={() => setOpenFaq(openFaq===i?-1:i)} className="w-full flex items-center justify-between p-4 text-sm font-semibold text-right">
-                {q}<Icon name="chevronDown" size={16} className={`transition-transform ${openFaq===i ? "rotate-180" : ""}`} />
-              </button>
-              {openFaq===i && <div className="px-4 pb-4 text-sm pm-muted leading-7">{a}</div>}
-            </div>
-          ))}
-        </div>
-      </div>
     </main>
   );
 }
 
 function Rules() {
   return (
-    <main className="max-w-3xl mx-auto px-4 md:px-6 py-14">
-      <div className="pm-mono text-xs pm-gold mb-2 tracking-wider">مصوبه داخلی سامانه</div>
-      <h1 className="text-3xl font-extrabold mb-6 flex items-center gap-2"><Icon name="scale" size={26} className="pm-navy" /> قوانین و مقررات استفاده</h1>
-      <div className="pm-panel rounded-xl p-6">
-        <ol className="flex flex-col gap-4">
-          {RULES.map((r,i) => (
-            <li key={i} className="flex gap-3 text-sm leading-7">
-              <span className="pm-mono pm-navy font-bold shrink-0">{(i+1).toString().padStart(2,"۰")}</span>
-              <span>{r}</span>
-            </li>
-          ))}
-        </ol>
+    <main className="max-w-3xl mx-auto px-4 md:px-6 py-10">
+      <h1 className="text-2xl font-bold mb-2">قوانین و مقررات استفاده</h1>
+      <p className="pm-muted text-sm mb-6">لطفاً پیش از استفاده از خدمات سامانه، قوانین زیر را با دقت مطالعه فرمایید.</p>
+      <div className="pm-panel rounded-xl p-6 flex flex-col gap-4">
+        {RULES.map((r, i) => (
+          <div key={i} className="flex items-start gap-3 text-sm leading-7 border-b pm-line pb-3 last:border-0 last:pb-0">
+            <span className="pm-mono font-bold pm-navy text-xs mt-0.5">{i + 1}.</span>
+            <div>{r}</div>
+          </div>
+        ))}
       </div>
     </main>
   );
@@ -1510,15 +1498,14 @@ function Rules() {
 
 function Privacy() {
   return (
-    <main className="max-w-3xl mx-auto px-4 md:px-6 py-14">
-      <div className="pm-mono text-xs pm-gold mb-2 tracking-wider">شفافیت داده کاربران</div>
-      <h1 className="text-3xl font-extrabold mb-4 flex items-center gap-2"><Icon name="shieldCheck" size={26} className="pm-navy" /> حریم خصوصی</h1>
-      <p className="pm-muted leading-7 mb-6 text-sm">این صفحه به زبان ساده توضیح می‌دهد پلیمریکا چه اطلاعاتی از شما نگه می‌دارد و چگونه از آن استفاده می‌کند.</p>
-      <div className="flex flex-col gap-3">
-        {PRIVACY_POINTS.map((p,i) => (
-          <div key={i} className="pm-panel rounded-xl p-5">
-            <div className="font-semibold text-sm mb-1.5">{p.t}</div>
-            <p className="pm-muted text-sm leading-7">{p.d}</p>
+    <main className="max-w-3xl mx-auto px-4 md:px-6 py-10">
+      <h1 className="text-2xl font-bold mb-2">حریم خصوصی و حفاظت از اطلاعات</h1>
+      <p className="pm-muted text-sm mb-6">سامانه پلیمریکا متعهد به حفظ اطلاعات شخصی کاربران است.</p>
+      <div className="pm-panel rounded-xl p-6 flex flex-col gap-5">
+        {PRIVACY_POINTS.map((p, i) => (
+          <div key={i} className="flex flex-col gap-1 border-b pm-line pb-4 last:border-0 last:pb-0">
+            <div className="font-bold text-sm pm-navy">{p.t}</div>
+            <div className="pm-muted text-xs leading-6">{p.d}</div>
           </div>
         ))}
       </div>
@@ -1528,135 +1515,119 @@ function Privacy() {
 
 function About() {
   return (
-    <main className="max-w-3xl mx-auto px-4 md:px-6 py-14">
-      <div className="pm-mono text-xs pm-gold mb-2 tracking-wider">درباره سامانه</div>
-      <h1 className="text-3xl font-extrabold mb-5">پلیمریکا؛ بازار متمرکز مواد پلیمری ایران</h1>
-      <p className="pm-muted leading-8 mb-4">پلیمریکا محلی است برای اتصال مستقیم تولیدکنندگان، بازرگانان، واحدهای بازیافت و مصرف‌کنندگان صنعتی مواد پلاستیکی و پلیمری؛ از گرانول‌های نو گرفته تا ضایعات و مواد بازیافتی.</p>
-      <p className="pm-muted leading-8 mb-8">هدف این سامانه شفاف‌سازی نرخ مواد اولیه پلیمری، کوتاه کردن مسیر بین خریدار و فروشنده، و ایجاد اعتماد از طریق احراز هویت و نشان «تاییدشده» است.</p>
-      <div className="grid sm:grid-cols-3 gap-3">
-        {[["shieldCheck","احراز هویت کاربران"],["flag","سامانه گزارش تخلف"],["scale","پایبندی به قوانین و مقررات"]].map(([icon,label],i) => (
-          <div key={i} className="pm-panel rounded-lg p-4 text-center">
-            <Icon name={icon} size={20} className="pm-navy mx-auto mb-2" />
-            <div className="text-xs font-medium">{label}</div>
-          </div>
-        ))}
+    <main className="max-w-3xl mx-auto px-4 md:px-6 py-10">
+      <h1 className="text-2xl font-bold mb-2">درباره پلیمریکا</h1>
+      <p className="pm-muted text-sm mb-6">پلتفرم تخصصی معرفی و معامله مواد اولیه و محصولات صنعت پلاستیک</p>
+      <div className="pm-panel rounded-xl p-6 leading-8 text-sm flex flex-col gap-4">
+        <p>
+          پلیمریکا با هدف تسهیل ارتباط مستقیم میان تولیدکنندگان، بازرگانان، واحدهای بازیافت و کارخانجات صنایع تکمیلی پلاستیک راه‌اندازی شده است.
+        </p>
+        <p>
+          در این سامانه می‌توانید بدون واسطه به آگهی‌های عرضه و تقاضای انواع گرانول، پودر پتروشیمی، مستربچ، ضایعات پلیمری و ماشین‌آلات دسترسی داشته باشید.
+        </p>
       </div>
     </main>
   );
 }
 
-function Footer({ setTab }) {
-  return (
-    <footer className="border-t pm-line mt-10 pm-panel-2 pb-24 md:pb-10">
-      <div className="max-w-6xl mx-auto px-4 md:px-6 py-10 grid md:grid-cols-3 gap-8">
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="seal w-8 h-8"><Icon name="layers" size={13} className="pm-navy" /></div>
-            <span className="font-bold pm-navy">پلیمریکا</span>
-          </div>
-          <p className="pm-muted text-sm leading-6">بازار خرید و فروش انواع پلاستیک و پلیمر، نو و بازیافتی.</p>
-        </div>
-        <div>
-          <div className="text-sm font-semibold mb-3">دسترسی سریع</div>
-          <div className="flex flex-col gap-2 text-sm">
-            {[["market","بازار آگهی‌ها"],["pricing","تعرفه اشتراک"],["rules","قوانین و مقررات"],["privacy","حریم خصوصی"],["about","درباره سامانه"]].map(([id,l]) => (
-              <button key={id} onClick={() => setTab(id)} className="pm-muted hover:text-[#1B3358] text-right">{l}</button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <div className="text-sm font-semibold mb-3">تماس با ما</div>
-          <div className="pm-muted text-sm flex items-center gap-2 mb-1.5"><Icon name="mail" size={13} /> <span className="pm-mono" dir="ltr">polymerica315@gmail.com</span></div>
-        </div>
-      </div>
-      <div className="border-t pm-line py-4 text-center pm-muted text-xs">© {new Date().getFullYear()} پلیمریکا — تمامی حقوق این سامانه محفوظ است.</div>
-    </footer>
-  );
-}
-
-function BottomNav({ tab, setTab, onMore }) {
-  const items = [
-    { id: "home", label: "خانه", icon: "home" },
-    { id: "market", label: "بازار", icon: "grid" },
-  ];
-  return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 pm-panel border-t pm-line flex items-stretch justify-around" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-      {items.map(it => (
-        <button key={it.id} onClick={() => setTab(it.id)} className={`flex flex-col items-center justify-center gap-1 py-2 flex-1 text-[11px] ${tab === it.id ? "pm-navy font-semibold" : "pm-muted"}`}>
-          <Icon name={it.icon} size={20} />
-          <span>{it.label}</span>
-        </button>
-      ))}
-      <button onClick={() => setTab("post")} className="flex flex-col items-center justify-center flex-1 -mt-1">
-        <span className="w-12 h-12 rounded-full pm-btn-primary flex items-center justify-center shadow-md"><Icon name="plus" size={22} /></span>
-        <span className={`text-[11px] mt-0.5 ${tab === "post" ? "pm-navy font-semibold" : "pm-muted"}`}>ثبت آگهی</span>
-      </button>
-      <button onClick={() => setTab("my")} className={`flex flex-col items-center justify-center gap-1 py-2 flex-1 text-[11px] ${tab === "my" ? "pm-navy font-semibold" : "pm-muted"}`}>
-        <Icon name="user" size={20} />
-        <span>آگهی‌های من</span>
-      </button>
-      <button onClick={onMore} className="flex flex-col items-center justify-center gap-1 py-2 flex-1 text-[11px] pm-muted">
-        <Icon name="menu" size={20} />
-        <span>بیشتر</span>
-      </button>
-    </nav>
-  );
-}
-
 function MoreSheet({ onClose, setTab, user, isPaid, onLogout, referralCount, showToast }) {
-  const referralLink = user ? `${window.location.origin}${window.location.pathname}?ref=${user.id}` : "";
-  const copyReferral = async () => {
-    try {
-      await navigator.clipboard.writeText(referralLink);
-      showToast && showToast("لینک دعوت کپی شد.");
-    } catch (e) {
-      showToast && showToast(referralLink);
-    }
+  const shareLink = user ? `${window.location.origin}?ref=${user.id}` : "";
+  const copyRef = () => {
+    navigator.clipboard.writeText(shareLink);
+    showToast("لینک دعوت اختصاصی شما کپی شد.");
   };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/45 flex items-end md:items-center md:justify-center" onClick={onClose}>
-      <div className="pm-panel w-full md:max-w-sm rounded-t-2xl md:rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="font-bold text-lg">منو</div>
-          <button onClick={onClose}><Icon name="x" size={20} /></button>
-        </div>
-        {user && (
-          <div className="flex items-center gap-2 pm-panel-2 rounded-lg p-3 mb-4">
-            <Icon name="user" size={18} className="pm-navy" />
-            <span className="font-medium text-sm">{user.name}</span>
-            {isPaid && <span className="pm-badge-recycled text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 mr-auto"><Icon name="crown" size={11} /> عضو ویژه</span>}
+    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
+      <div className="pm-panel w-full max-w-xs h-full p-6 flex flex-col justify-between overflow-y-auto" onClick={e=>e.stopPropagation()}>
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <span className="font-bold text-lg pm-navy">منوی سامانه</span>
+            <button onClick={onClose}><Icon name="x" size={20} /></button>
           </div>
-        )}
-        {user && (
-          <div className="pm-panel-2 rounded-lg p-3.5 mb-4">
-            <div className="flex items-center gap-2 mb-1.5">
-              <Icon name="sparkles" size={15} className="pm-gold" />
-              <span className="text-sm font-semibold">دعوت از دوستان</span>
-              {referralCount > 0 && <span className="pm-badge-verified text-[10px] px-2 py-0.5 rounded-full font-medium mr-auto">{referralCount} نفر معرفی شده</span>}
-            </div>
-            <p className="pm-muted text-[11px] leading-5 mb-2">لینک اختصاصی خودت رو برای همکارها و دوستانت بفرست تا وقتی از همین لینک وارد سایت بشن، به اسم تو ثبت بشن.</p>
-            <button onClick={copyReferral} className="pm-btn-gold rounded-lg px-3 py-2 text-xs w-full flex items-center justify-center gap-1.5"><Icon name="share" size={13} /> کپی لینک دعوت</button>
-          </div>
-        )}
-        <div className="flex flex-col gap-1">
-          <a href="/prices.html" className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-[#F4EFE1] text-sm">
-            <Icon name="fileText" size={17} className="pm-gold" /> قیمت هفته پلیمر
-          </a>
-          {[["pricing","تعرفه اشتراک","card"],["rules","قوانین و مقررات","scale"],["privacy","حریم خصوصی","shieldCheck"],["about","درباره سامانه","fileText"]].map(([id,label,icon]) => (
-            <button key={id} onClick={() => setTab(id)} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-[#F4EFE1] text-sm">
-              <Icon name={icon} size={17} className="pm-navy" /> {label}
-            </button>
-          ))}
+
           {user && (
-            <button onClick={onLogout} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-[#F4EFE1] text-sm text-[#8B3A32]">
-              <Icon name="logOut" size={17} /> خروج از حساب
-            </button>
+            <div className="pm-panel-2 rounded-xl p-4 mb-6">
+              <div className="font-bold text-sm">{user.name}</div>
+              <div className="pm-mono text-xs pm-muted mb-2">{user.phone}</div>
+              {user.company && <div className="text-xs pm-navy mb-2">{user.company}</div>}
+              <div className="flex items-center gap-1 text-xs font-semibold pm-gold">
+                {isPaid ? <><Icon name="crown" size={14} /> اشتراک فعال</> : "پلن پایه (رایگان)"}
+              </div>
+            </div>
+          )}
+
+          <nav className="flex flex-col gap-2">
+            <button onClick={() => setTab("home")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="home" size={18} /> صفحه اصلی</button>
+            <button onClick={() => setTab("market")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="grid" size={18} /> بازار آگهی‌ها</button>
+            <button onClick={() => setTab("post")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="plus" size={18} /> ثبت آگهی جدید</button>
+            <button onClick={() => setTab("my")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="package" size={18} /> آگهی‌های من</button>
+            <button onClick={() => setTab("pricing")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="crown" size={18} /> تعرفه اشتراک</button>
+            <a href="/prices.html" className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="trendingUp" size={18} /> تابلوی قیمت هفته</a>
+            <hr className="my-2 pm-line" />
+            <button onClick={() => setTab("rules")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="fileText" size={18} /> قوانین و مقررات</button>
+            <button onClick={() => setTab("privacy")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="shieldCheck" size={18} /> حریم خصوصی</button>
+            <button onClick={() => setTab("about")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="layers" size={18} /> درباره ما</button>
+          </nav>
+
+          {user && (
+            <div className="mt-6 pt-4 border-t pm-line">
+              <div className="text-xs font-bold mb-2">دعوت از همکاران</div>
+              <div className="pm-muted text-[11px] mb-2">تعداد معرفی‌شده‌ها: {referralCount} نفر</div>
+              <button onClick={copyRef} className="w-full pm-btn-ghost rounded-lg py-2 text-xs flex items-center justify-center gap-1.5"><Icon name="share" size={14} /> کپی لینک دعوت</button>
+            </div>
           )}
         </div>
-      </div>
 
+        {user && (
+          <button onClick={onLogout} className="pm-btn-ghost rounded-lg py-2.5 text-xs text-[#8B3A32] flex items-center justify-center gap-2 mt-6">
+            <Icon name="logOut" size={16} /> خروج از حساب کاربری
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
+function BottomNav({ tab, setTab, onMore }) {
+  return (
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 pm-panel border-t pm-line flex items-center justify-around h-14 px-2">
+      <button onClick={() => setTab("home")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="home"?"pm-navy font-bold":"pm-muted"}`}>
+        <Icon name="home" size={18} /> خانه
+      </button>
+      <button onClick={() => setTab("market")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="market"?"pm-navy font-bold":"pm-muted"}`}>
+        <Icon name="grid" size={18} /> بازار
+      </button>
+      <button onClick={() => setTab("post")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="post"?"pm-navy font-bold":"pm-muted"}`}>
+        <div className="w-8 h-8 rounded-full pm-btn-primary flex items-center justify-center -mt-4 shadow-md"><Icon name="plus" size={18} /></div>
+        ثبت
+      </button>
+      <button onClick={() => setTab("my")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="my"?"pm-navy font-bold":"pm-muted"}`}>
+        <Icon name="package" size={18} /> آگهی‌های من
+      </button>
+      <button onClick={onMore} className="flex flex-col items-center gap-1 text-[10px] pm-muted">
+        <Icon name="menu" size={18} /> منو
+      </button>
+    </div>
+  );
+}
 
+function Footer({ setTab }) {
+  return (
+    <footer className="pm-panel border-t pm-line mt-20 pb-20 md:pb-8 pt-10">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-xs pm-muted">
+        <div className="flex items-center gap-2">
+          <Icon name="layers" size={18} className="pm-navy" />
+          <span className="font-bold pm-navy text-sm">پلیمریکا</span>
+          <span>— سامانه تخصصی بازار پلیمر و پلاستیک</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setTab("rules")} className="hover:underline">قوانین</button>
+          <button onClick={() => setTab("privacy")} className="hover:underline">حریم خصوصی</button>
+          <button onClick={() => setTab("pricing")} className="hover:underline">تعرفه‌ها</button>
+          <button onClick={() => setTab("about")} className="hover:underline">درباره ما</button>
+        </div>
+      </div>
+    </footer>
+  );
+}
