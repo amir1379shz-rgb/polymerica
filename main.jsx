@@ -28,7 +28,7 @@ class ErrorBoundary extends React.Component {
             whiteSpace: "pre-wrap",
           }}
         >
-          <h2>خطای واقعی برنامه:</h2>
+          <h2>خطای برنامه:</h2>
           <div>{String(this.state.error && this.state.error.message)}</div>
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
             {this.state.error && this.state.error.stack}
@@ -44,7 +44,9 @@ class ErrorBoundary extends React.Component {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <ErrorBoundary>
-    <PolymerMarket />
-  </ErrorBoundary>
+  <React.StrictMode>
+    <ErrorBoundary>
+      <PolymerMarket />
+    </ErrorBoundary>
+  </React.StrictMode>
 );
