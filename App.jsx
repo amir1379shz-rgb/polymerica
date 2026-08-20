@@ -610,7 +610,7 @@ export default function PolymerMarket() {
       )}
 
       {showLogin && (
-<div class="fixed inset-0 z-50 bg-white shadow-xl overflow-y-auto">
+<div class="fixed inset-0 z-50 bg-white shadow-xl overflow-y-auto"><div></div>
 
           <div className="pm-panel rounded-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-1"><Icon name="lock" size={18} className="pm-navy" /><span className="font-bold">ورود به سامانه</span></div>
