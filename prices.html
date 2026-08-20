@@ -162,13 +162,20 @@
     height:42px;
     border-radius:12px;
     position:relative;
-    display:flex;
-    align-items:center;
-    justify-content:center;
     flex-shrink:0;
+    overflow:hidden;
+    background-image:url('https://images.pexels.com/photos/34286024/pexels-photo-34286024.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop');
+    background-size:cover;
+    background-position:center;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,0.25);
   }
-  .mat-icon svg{width:26px;height:26px;display:block;}
+  .mat-icon::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:var(--tint,rgba(199,151,47,0.55));
+    mix-blend-mode:color;
+  }
 
   .mat{
     font-weight:700;
@@ -177,7 +184,7 @@
   .grade{
     font-family:'Space Mono',monospace;
     font-size:0.78rem;
-    color:rgba(19,32,57,0.55);
+    color:rgba(19,32,57,0.72);
     margin-top:3px;
   }
   .price{
@@ -188,12 +195,12 @@
   }
   .unit{
     font-size:0.72rem;
-    color:rgba(19,32,57,0.5);
+    color:rgba(19,32,57,0.68);
     margin-right:4px;
   }
   .updated{
     font-size:0.75rem;
-    color:rgba(19,32,57,0.5);
+    color:rgba(19,32,57,0.72);
     text-align:left;
     font-family:'Space Mono',monospace;
   }
@@ -207,7 +214,9 @@
   .error{color:var(--down);}
 
   .spec-btn{
-        display:inline-block;
+        display:inline-flex;
+        align-items:center;
+        min-height:32px;
         margin-top:10px;
         padding:6px 16px;
         border-radius:999px;
@@ -297,48 +306,30 @@
 const SUPABASE_URL = "https://ocviprbkqyozqtpdcbqs.supabase.co";
 const SUPABASE_KEY = "sb_publishable_m-QO6T-aWL-teVtG1dO--Q_SqY0bT-T";
 
-// Color + icon-style per material family. Falls back to a neutral gold pellet icon.
-const MATERIAL_STYLE = {
-  "PP":              { grad: ["#E4C878", "#C7972F"] },
-  "PP نساجی":        { grad: ["#E4C878", "#C7972F"] },
-  "PP شیمیایی":      { grad: ["#EAD9A0", "#B4842A"] },
-  "PE سنگین (HDPE)": { grad: ["#5FA3AE", "#2F6E7A"] },
-  "PE سبک (LDPE)":   { grad: ["#8FC1C9", "#3E8B97"] },
-  "PE سبک خطی (LLDPE)": { grad: ["#7CB8C4", "#2F6E7A"] },
-  "PVC":             { grad: ["#B9C2CE", "#6E7C8E"] },
-  "PET":             { grad: ["#BFE3E6", "#4FA6AD"] },
-  "PS":              { grad: ["#E7ABA0", "#C15C4A"] },
-  "PS (GPPS)":       { grad: ["#EFC2B8", "#C97A63"] },
-  "PC":              { grad: ["#C7B7DE", "#7C5FA6"] },
-  "EPS":             { grad: ["#F2E9D8", "#D8B36A"] },
-  "PA/نایلون":       { grad: ["#C9D6A8", "#7C9A4E"] },
-  "PU":              { grad: ["#D8B7C6", "#A35C7C"] },
-  "مستربچ":          { grad: ["#F0D27A", "#C7972F"] },
+// Real pellet photo (Pexels, free-to-use license) tinted per material family so
+// each row still reads its material color at a glance while showing a real photo texture.
+const MATERIAL_TINT = {
+  "PP":                 "rgba(199,151,47,0.55)",
+  "PP نساجی":           "rgba(199,151,47,0.55)",
+  "PP شیمیایی":         "rgba(180,132,42,0.55)",
+  "PE سنگین (HDPE)":    "rgba(47,110,122,0.55)",
+  "PE سبک (LDPE)":      "rgba(62,139,151,0.55)",
+  "PE سبک خطی (LLDPE)": "rgba(47,110,122,0.5)",
+  "PVC":                "rgba(110,124,142,0.55)",
+  "PET":                "rgba(79,166,173,0.5)",
+  "PS":                 "rgba(193,92,74,0.55)",
+  "PS (GPPS)":          "rgba(201,122,99,0.5)",
+  "PC":                 "rgba(124,95,166,0.55)",
+  "EPS":                "rgba(216,179,106,0.45)",
+  "PA/نایلون":          "rgba(124,154,78,0.5)",
+  "PU":                 "rgba(163,92,124,0.5)",
+  "مستربچ":             "rgba(199,151,47,0.6)",
 };
-const DEFAULT_STYLE = { grad: ["#E4C878", "#C7972F"] };
+const DEFAULT_TINT = "rgba(199,151,47,0.55)";
 
 function pelletIcon(material){
-  const style = MATERIAL_STYLE[material] || DEFAULT_STYLE;
-  const [c1, c2] = style.grad;
-  const gid = 'g' + Math.random().toString(36).slice(2,9);
-  return `
-    <div class="mat-icon" style="background:linear-gradient(145deg, ${c1}, ${c2});">
-      <svg viewBox="0 0 32 32" fill="none">
-        <defs>
-          <radialGradient id="${gid}a" cx="35%" cy="30%" r="70%">
-            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
-            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-          </radialGradient>
-        </defs>
-        <ellipse cx="11" cy="13" rx="7" ry="6" fill="${c1}" opacity="0.95"/>
-        <ellipse cx="21" cy="12" rx="6.5" ry="5.5" fill="${c2}" opacity="0.95"/>
-        <ellipse cx="16" cy="21" rx="7.5" ry="6.2" fill="${c1}" opacity="0.9"/>
-        <ellipse cx="11" cy="13" rx="7" ry="6" fill="url(#${gid}a)"/>
-        <ellipse cx="21" cy="12" rx="6.5" ry="5.5" fill="url(#${gid}a)"/>
-        <ellipse cx="16" cy="21" rx="7.5" ry="6.2" fill="url(#${gid}a)"/>
-      </svg>
-    </div>
-  `;
+  const tint = MATERIAL_TINT[material] || DEFAULT_TINT;
+  return `<div class="mat-icon" style="--tint:${tint}" aria-hidden="true"></div>`;
 }
 
 function toJalaliDate(isoDate){
@@ -391,10 +382,10 @@ async function loadPrices(){
           <div>
             <div class="mat">${item.material}</div>
             <div class="grade">${item.grade || ''}</div>
+            ${specLink}
           </div>
           <div class="price">${formatPrice(item.price_toman)}<span class="unit"> تومان / ${item.unit || 'kg'}</span></div>
           <div class="updated">${toJalaliDate(item.update_date)}</div>
-          ${specLink}
         </div>
         `;
       }).join('');
