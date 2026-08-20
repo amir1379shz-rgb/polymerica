@@ -1,0 +1,1679 @@
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+/* ---------- Supabase connection (real shared database) ---------- */
+const SUPABASE_URL = "https://ocviprbkqyozqtpdcbqs.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_m-QO6T-aWL-teVtG1dO--Q_SqY0bT-T";
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- local shim: only for remembering "who am I on this device" ---------- */
+const storage = {
+  async get(key) {
+    try { const v = localStorage.getItem("pm_" + key); if (v === null) return null; return { key, value: v }; }
+    catch (e) { return null; }
+  },
+  async set(key, value) {
+    try { localStorage.setItem("pm_" + key, value); return { key, value }; }
+    catch (e) { return null; }
+  },
+};
+
+/* ---------- mappers between JS objects and Supabase table rows ---------- */
+function normalizeItemCategory(row) {
+  const v = row.item_category;
+  if (ITEM_CATEGORIES.includes(v)) return v;
+  if (v === "ماشین‌آلات و تجهیزات پلیمری") return ITEM_CATEGORIES[2];
+  if (row.machine_type) return ITEM_CATEGORIES[2];
+  if (row.sub_category === "محصول پلاستیکی") return ITEM_CATEGORIES[1];
+  return ITEM_CATEGORIES[0];
+}
+function rowToListing(row) {
+  return {
+    id: row.id, title: row.title, polymer: row.polymer, customPolymer: row.custom_polymer || "", condition: row.condition,
+    qty: row.qty, price: Number(row.price) || 0, unit: row.unit, province: row.province,
+    city: row.city || "", seller: row.seller_name, phone: row.phone, verified: !!row.verified, featured: !!row.featured,
+    sellerUid: row.seller_id, created: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    desc: row.description, images: row.images || [],
+    adType: row.ad_type || "فروش", subCategory: row.sub_category || "", usageCategory: row.usage_category || "",
+    recycledForm: row.recycled_form || "", negotiable: !!row.negotiable,
+    itemCategory: normalizeItemCategory(row), machineType: row.machine_type || "", machineBrand: row.machine_brand || "",
+  };
+}
+function listingToRow(l) {
+  return {
+    title: l.title, polymer: l.polymer, custom_polymer: l.polymer === "OTHER" ? (l.customPolymer || "") : "", condition: l.condition, qty: l.qty, price: l.price,
+    unit: l.unit, province: l.province, city: l.city || "", seller_name: l.seller, phone: l.phone,
+    verified: l.verified, featured: l.featured, seller_id: l.sellerUid, description: l.desc,
+    images: l.images || [],
+    ad_type: l.adType || "فروش", sub_category: l.subCategory || "", usage_category: l.usageCategory || "",
+    recycled_form: l.recycledForm || "", negotiable: !!l.negotiable,
+    item_category: l.itemCategory || ITEM_CATEGORIES[0], machine_type: l.machineType || "", machine_brand: l.machineBrand || "",
+  };
+}
+
+/* ---------- database layer (real, shared across every user) ---------- */
+const db = {
+  lastError: null,
+  async listListings() {
+    const { data, error } = await sb.from("listings").select("*").order("created_at", { ascending: false });
+    if (error) { console.error("listListings", error); db.lastError = error; return []; }
+    return (data || []).map(rowToListing);
+  },
+  async insertListing(listing) {
+    const { data, error } = await sb.from("listings").insert([listingToRow(listing)]).select().single();
+    if (error) { console.error("insertListing", error); db.lastError = error; return null; }
+    db.lastError = null;
+    return rowToListing(data);
+  },
+  async updateListing(id, listing) {
+    const { data, error } = await sb.from("listings").update(listingToRow(listing)).eq("id", id).select().single();
+    if (error) { console.error("updateListing", error); db.lastError = error; return null; }
+    db.lastError = null;
+    return rowToListing(data);
+  },
+  async deleteListing(id) {
+    const { error } = await sb.from("listings").delete().eq("id", id);
+    if (error) { console.error("deleteListing", error); db.lastError = error; return false; }
+    db.lastError = null;
+    return true;
+  },
+  async createReport(report) {
+    const { error } = await sb.from("reports").insert([{
+      listing_id: report.listingId, listing_title: report.listingTitle, reason: report.reason,
+      details: report.details || "", reporter_phone: report.reporterPhone || "",
+    }]);
+    if (error) { console.error("createReport", error); db.lastError = error; return false; }
+    db.lastError = null;
+    return true;
+  },
+  async upsertProfile(profile) {
+    // Phone number is our login key. Always check for an existing profile with
+    // this phone first, so returning users get their SAME account back instead
+    // of a brand-new one each time they log in (which was orphaning their ads).
+    const { data: existing, error: findErr } = await sb.from("profiles")
+      .select("*").eq("phone", profile.phone)
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (findErr) { console.error("findProfile", findErr); }
+    if (existing) {
+      const { data, error } = await sb.from("profiles")
+        .update({ name: profile.name, company: profile.company })
+        .eq("id", existing.id).select().single();
+      if (error) { console.error("updateProfile", error); return existing; }
+      return data;
+    }
+    const { data, error } = await sb.from("profiles")
+      .insert([{ name: profile.name, phone: profile.phone, company: profile.company, referred_by: profile.referredBy || null }])
+      .select().single();
+    if (error) { console.error("insertProfile", error); db.lastError = error; return null; }
+    db.lastError = null;
+    return data;
+  },
+  async getSubscription(userId) {
+    const { data, error } = await sb.from("subscriptions").select("*").eq("user_id", userId).maybeSingle();
+    if (error) { console.error("getSubscription", error); return null; }
+    return data;
+  },
+  async upsertSubscription(userId, plan) {
+    const { data, error } = await sb.from("subscriptions")
+      .upsert({ user_id: userId, plan, since: new Date().toISOString() }, { onConflict: "user_id" })
+      .select().single();
+    if (error) { console.error("upsertSubscription", error); return null; }
+    return data;
+  },
+  async listInvoices(userId) {
+    const { data, error } = await sb.from("invoices").select("*").eq("user_id", userId).order("created_at", { ascending: false });
+    if (error) { console.error("listInvoices", error); return []; }
+    return data || [];
+  },
+  async countReferrals(userId) {
+    const { count, error } = await sb.from("profiles").select("id", { count: "exact", head: true }).eq("referred_by", userId);
+    if (error) { console.error("countReferrals", error); return 0; }
+    return count || 0;
+  },
+  async insertInvoice(inv) {
+    const { error } = await sb.from("invoices").insert([inv]);
+    if (error) { console.error("insertInvoice", error); return false; }
+    return true;
+  },
+};
+
+/* ---------- icons ---------- */
+const ICONS = {
+  search: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
+  mapPin: <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></>,
+  phone: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>,
+  mail: <><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></>,
+  plus: <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+  x: <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+  menu: <><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></>,
+  factory: <><path d="M5 21V9l5 3V9l5 3V9l4 2v7"/><path d="M3 21h18"/><path d="M5 9V4h3v5"/></>,
+  filter: <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>,
+  shieldCheck: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></>,
+  layers: <><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>,
+  recycle: <><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></>,
+  trendingUp: <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>,
+  trendingDown: <><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></>,
+  package: <><path d="M16.5 9.4 7.5 4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></>,
+  chevronDown: <polyline points="6 9 12 15 18 9"/>,
+  check: <polyline points="20 6 9 17 4 12"/>,
+  clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
+  lock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
+  logOut: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
+  user: <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
+  flag: <><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></>,
+  scale: <><path d="M12 3v18"/><path d="M5 21h14"/><path d="M5 7l-3 6a3 3 0 0 0 6 0z"/><path d="M19 7l-3 6a3 3 0 0 0 6 0z"/><path d="M5 7h14"/></>,
+  share: <><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>,
+  trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
+  fileText: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></>,
+  card: <><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></>,
+  loader: <><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></>,
+  receipt: <><path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z" style={{display:"none"}}/><path d="M17 2H7a2 2 0 0 0-2 2v18l3-2 2 2 2-2 2 2 2-2 3 2V4a2 2 0 0 0-2-2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/></>,
+  crown: <path d="M2 20h20l-2-9-5 4-3-8-3 8-5-4z"/>,
+  image: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></>,
+  camera: <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></>,
+  chevronLeft: <polyline points="15 18 9 12 15 6"/>,
+  chevronRight: <polyline points="9 18 15 12 9 6"/>,
+  sparkles: <><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M19 15l.7 2.1L22 18l-2.3.9L19 21l-.7-2.1L16 18l2.3-.9L19 15z"/></>,
+  home: <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>,
+  grid: <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></>,
+  messageCircle: <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>,
+};
+
+/* ---------- image helper: resize + upload to Supabase Storage (not the DB) ---------- */
+function canvasToBlob(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("blob-failed")), "image/jpeg", quality);
+  });
+}
+async function resizeImageToBlob(file, maxDim, quality) {
+  if (file.type && /^(video|audio|text)\//.test(file.type)) { throw new Error("not-image"); }
+
+  if (window.createImageBitmap) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      let w = bitmap.width, h = bitmap.height;
+      if (w > maxDim || h > maxDim) {
+        if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      if (bitmap.close) bitmap.close();
+      return await canvasToBlob(canvas, quality);
+    } catch (e) {
+      // fall through to the legacy method below
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = async () => {
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(await canvasToBlob(canvas, quality)); } catch (err) { reject(err); }
+      };
+      img.onerror = () => reject(new Error("bad-image"));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error("read-failed"));
+    reader.readAsDataURL(file);
+  });
+}
+async function uploadListingImage(file, maxDim, quality) {
+  const blob = await resizeImageToBlob(file, maxDim, quality);
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+  const { error: uploadErr } = await sb.storage.from("listing-images").upload(path, blob, {
+    contentType: "image/jpeg",
+    cacheControl: "31536000",
+  });
+  if (uploadErr) throw new Error("upload-failed");
+  const { data } = sb.storage.from("listing-images").getPublicUrl(path);
+  return data.publicUrl;
+}
+function Icon({ name, size = 18, className = "" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {ICONS[name]}
+    </svg>
+  );
+}
+
+/* ---------- data ---------- */
+const POLYMERS = [
+  { code: "PP", name: "پلی‌پروپیلن", hint: "ظروف یکبارمصرف، طناب، فرش", swatch: "#D8D2C0" },
+  { code: "PE-LD", name: "پلی‌اتیلن سبک (LDPE)", hint: "نایلون، کیسه، شیرینگ", swatch: "#CFE0DC" },
+  { code: "PE-HD", name: "پلی‌اتیلن سنگین (HDPE)", hint: "گالن، بطری بادی، لوله", swatch: "#B9C9C2" },
+  { code: "PET", name: "پلی‌اتیلن ترفتالات", hint: "بطری آب و نوشابه", swatch: "#CFE3EE" },
+  { code: "PVC", name: "پلی‌وینیل کلراید", hint: "لوله، پروفیل، شیلنگ", swatch: "#E4D9C7" },
+  { code: "PS", name: "پلی‌استایرن", hint: "فوم، ظرف یکبارمصرف سخت", swatch: "#EFEFE6" },
+  { code: "ABS", name: "ای‌بی‌اس", hint: "بدنه لوازم خانگی، اسباب‌بازی", swatch: "#3A3F3C" },
+  { code: "PC", name: "پلی‌کربنات", hint: "ورق شفاف، عینک، حباب چراغ", swatch: "#DCE6E4" },
+  { code: "PA", name: "نایلون مهندسی (پلی‌آمید)", hint: "الیاف، چرخ‌دنده، قطعات فنی", swatch: "#E7D8C3" },
+  { code: "PU", name: "پلی‌یورتان", hint: "فوم، اسفنج، تشک", swatch: "#D9CBB8" },
+  { code: "MB", name: "مستربچ", hint: "گرانول رنگ‌دهنده", swatch: "#C97B4A" },
+  { code: "REG", name: "گرانول بازیافتی", hint: "گرانول تولیدشده از ضایعات", swatch: "#7FA88E" },
+  { code: "OTHER", name: "غیره / متفرقه", hint: "اگر نوع مواد را نمی‌دانید یا در لیست نبود", swatch: "#B7B2A0" },
+];
+const BASE_PRICES = { "PP":54000, "PE-LD":58000, "PE-HD":61500, "PET":33000, "PVC":40500, "PS":47000, "ABS":71000, "PC":112000, "PA":168000, "PU":89000, "MB":96000, "REG":27500 };
+const PROVINCES = ["تهران", "اصفهان", "البرز", "خراسان رضوی", "فارس", "خوزستان", "آذربایجان شرقی", "آذربایجان غربی", "یزد", "کرمان", "مازندران", "گیلان", "قم", "قزوین", "مرکزی", "همدان", "کرمانشاه", "گلستان", "اردبیل", "زنجان", "سمنان", "لرستان", "کهگیلویه و بویراحمد", "بوشهر", "هرمزگان", "سیستان و بلوچستان", "خراسان شمالی", "خراسان جنوبی", "چهارمحال و بختیاری", "ایلام", "کردستان"];
+const CITIES = {
+  "تهران": ["تهران", "ری", "شهریار", "اسلامشهر", "پاکدشت", "ورامین", "دماوند", "پردیس", "پرند", "رباط‌کریم", "ملارد"],
+  "اصفهان": ["اصفهان", "کاشان", "نجف‌آباد", "خمینی‌شهر", "شاهین‌شهر", "نائین", "فولادشهر", "مبارکه", "لنجان", "گلپایگان"],
+  "البرز": ["کرج", "فردیس", "نظرآباد", "ساوجبلاغ", "اشتهارد", "طالقان", "هشتگرد"],
+  "خراسان رضوی": ["مشهد", "نیشابور", "سبزوار", "تربت حیدریه", "کاشمر", "قوچان", "تربت جام", "چناران", "فریمان"],
+  "فارس": ["شیراز", "مرودشت", "جهرم", "کازرون", "فسا", "لار", "داراب", "آباده", "استهبان"],
+  "خوزستان": ["اهواز", "آبادان", "خرمشهر", "دزفول", "ماهشهر", "بندر امام", "شوشتر", "اندیمشک", "بهبهان", "رامهرمز"],
+  "آذربایجان شرقی": ["تبریز", "مراغه", "میانه", "مرند", "اهر", "بناب", "شبستر", "سراب"],
+  "آذربایجان غربی": ["ارومیه", "خوی", "مهاباد", "بوکان", "میاندوآب", "سلماس", "پیرانشهر"],
+  "یزد": ["یزد", "میبد", "اردکان", "بافق", "ابرکوه", "تفت"],
+  "کرمان": ["کرمان", "رفسنجان", "سیرجان", "بم", "جیرفت", "زرند", "کهنوج"],
+  "مازندران": ["ساری", "بابل", "آمل", "قائم‌شهر", "بهشهر", "تنکابن", "چالوس", "نوشهر", "بابلسر"],
+  "گیلان": ["رشت", "بندر انزلی", "لاهیجان", "لنگرود", "آستارا", "رودسر", "تالش", "صومعه‌سرا"],
+  "قم": ["قم"],
+  "قزوین": ["قزوین", "البرز", "تاکستان", "بوئین‌زهرا"],
+  "مرکزی": ["اراک", "ساوه", "خمین", "محلات", "دلیجان"],
+  "همدان": ["همدان", "ملایر", "نهاوند", "تویسرکان", "اسدآباد"],
+  "کرمانشاه": ["کرمانشاه", "اسلام‌آباد غرب", "سنقر", "کنگاور", "پاوه"],
+  "گلستان": ["گرگان", "گنبد کاووس", "علی‌آباد کتول", "آق‌قلا", "کردکوی"],
+  "اردبیل": ["اردبیل", "مشگین‌شهر", "پارس‌آباد", "خلخال", "گرمی"],
+  "زنجان": ["زنجان", "ابهر", "خدابنده", "ماه‌نشان"],
+  "سمنان": ["سمنان", "شاهرود", "دامغان", "گرمسار"],
+  "لرستان": ["خرم‌آباد", "بروجرد", "دورود", "الیگودرز", "کوهدشت"],
+  "کهگیلویه و بویراحمد": ["یاسوج", "گچساران", "دوگنبدان"],
+  "بوشهر": ["بوشهر", "برازجان", "گناوه", "کنگان", "عسلویه"],
+  "هرمزگان": ["بندرعباس", "میناب", "بندر لنگه", "قشم", "کیش"],
+  "سیستان و بلوچستان": ["زاهدان", "زابل", "چابهار", "ایرانشهر", "خاش"],
+  "خراسان شمالی": ["بجنورد", "شیروان", "اسفراین"],
+  "خراسان جنوبی": ["بیرجند", "قائنات", "طبس"],
+  "چهارمحال و بختیاری": ["شهرکرد", "بروجن", "فارسان"],
+  "ایلام": ["ایلام", "دهلران", "آبدانان", "مهران"],
+  "کردستان": ["سنندج", "سقز", "مریوان", "بانه", "قروه"],
+};
+const AD_TYPES = ["فروش", "خرید"];
+const NEW_SUBCATS = ["مواد اولیه", "محصول پلاستیکی"];
+const USAGE_CATS = ["کشاورزی", "بسته‌بندی", "ساختمانی", "صنعتی"];
+const RECYCLED_FORMS = ["زنده‌بار", "آسیاب‌شده", "فشرده (بیل‌شده)", "شسته‌شده", "گرانول بازیافتی"];
+const ITEM_CATEGORIES = ["مواد پلیمری و پلاستیک", "محصولات پلیمری", "ماشین‌آلات و دستگاه‌های پلیمری"];
+const MACHINE_TYPES = [
+  "اکسترودر (خط تولید لوله/پروفیل/شیت)",
+  "دستگاه تزریق پلاستیک (اینجکشن)",
+  "دستگاه بادی (بلوموباژ)",
+  "آسیاب و خردکن ضایعات",
+  "گرانول‌ساز / پلت‌ساز",
+  "میکسر و مخلوط‌کن",
+  "دستگاه بسته‌بندی و شیرینگ",
+  "قالب فلزی (تزریق/بادی/اکستروژن)",
+  "دستگاه چاپ و برچسب‌زنی",
+  "کوره و سیستم گرمایشی خط تولید",
+  "سایر ماشین‌آلات و تجهیزات",
+];
+const MACHINE_CONDITIONS = ["نو", "کارکرده - سالم", "کارکرده - نیازمند تعمیر"];
+const REPORT_REASONS = ["مشکوک به کلاهبرداری", "اطلاعات یا قیمت نادرست", "آگهی تکراری یا اسپم", "کالای خارج از موضوع سامانه", "محتوای نامناسب", "سایر موارد"];
+
+
+const SEED_LISTINGS = [
+  { id: "s1", title: "گرانول HDPE بادی درجه یک", polymer: "PE-HD", condition: "نو", qty: "20 تن", price: 62500, unit: "کیلوگرم", province: "تهران", seller: "پلیمر آریا صنعت", phone: "021-44551200", verified: true, featured: true, created: Date.now() - 1000*60*60*3, desc: "گرانول HDPE بادی، رنگ طبیعی، مناسب تولید قطعات صنعتی و بطری." },
+  { id: "s2", title: "ضایعات PET فشرده (بطری)", polymer: "PET", condition: "بازیافتی", qty: "8 تن", price: 14200, unit: "کیلوگرم", province: "اصفهان", seller: "بازیافت سبز اصفهان", phone: "031-33221100", verified: true, created: Date.now() - 1000*60*60*9, desc: "بیل بطری PET فشرده، تفکیک‌شده، آماده بارگیری." },
+  { id: "s3", title: "پودر PVC K67 خوراک کابل", polymer: "PVC", condition: "نو", qty: "12 تن", price: 41000, unit: "کیلوگرم", province: "خراسان رضوی", seller: "شیمی پلیمر توس", phone: "051-38001122", verified: false, created: Date.now() - 1000*60*60*20, desc: "پودر PVC مناسب روکش کابل، K-value استاندارد." },
+  { id: "s4", title: "گرانول بازیافتی PP رنگی", polymer: "PP", condition: "بازیافتی", qty: "5 تن", price: 28500, unit: "کیلوگرم", province: "البرز", seller: "احسان پلاستیک کرج", phone: "026-32441098", verified: true, created: Date.now() - 1000*60*60*30, desc: "گرانول بازیافتی PP، رنگ مخلوط، تست افت وزنی انجام شده." },
+  { id: "s5", title: "مستربچ سفید TiO2 بالا", polymer: "MB", condition: "نو", qty: "2 تن", price: 98000, unit: "کیلوگرم", province: "تهران", seller: "رنگدانه پارس", phone: "021-88123456", verified: true, created: Date.now() - 1000*60*60*5, desc: "مستربچ سفید با پایه PE، غلظت رنگدانه بالا، پوشش‌دهی عالی." },
+  { id: "s6", title: "ضایعات ABS خرد شده", polymer: "ABS", condition: "بازیافتی", qty: "3.5 تن", price: 33500, unit: "کیلوگرم", province: "فارس", seller: "صنایع پلاستیک زاگرس", phone: "071-36221177", verified: false, created: Date.now() - 1000*60*60*50, desc: "خرده ABS از ضایعات لوازم خانگی، شسته‌شده و خشک." },
+  { id: "s7", title: "گرانول نایلون PA6 تقویت‌شده", polymer: "PA", condition: "نو", qty: "1 تن", price: 187000, unit: "کیلوگرم", province: "تهران", seller: "پلیمر مهندسی البرز", phone: "021-77009911", verified: true, created: Date.now() - 1000*60*60*12, desc: "PA6 با 30٪ الیاف شیشه، مناسب قطعات فنی خودرو." },
+  { id: "s8", title: "گرانول بازیافتی PET بطری شفاف", polymer: "PET", condition: "بازیافتی", qty: "15 تن", price: 33000, unit: "کیلوگرم", province: "خوزستان", seller: "بازیافت کارون", phone: "061-53301188", verified: true, created: Date.now() - 1000*60*60*40, desc: "فلیک و گرانول PET شفاف، فاقد PVC، آماده صادرات." },
+];
+
+const PLANS = [
+  { id: "free", name: "پایه", price: 0, priceLabel: "رایگان", period: "", features: ["تا ۳ آگهی فعال", "درج قیمت و مشخصات فنی", "نمایش در جست‌وجوی عمومی", "تا ۵ بار مشاهده اطلاعات تماس"], cta: "پلن فعلی شما" },
+  { id: "pro", name: "حرفه‌ای", price: 490000, priceLabel: "۴۹۰,۰۰۰", period: "تومان / ماه", features: ["آگهی نامحدود", "نشان «تاییدشده» رسمی روی آگهی‌ها", "اولویت نمایش در نتایج", "مشاهده نامحدود اطلاعات تماس", "آمار بازدید آگهی‌ها"], cta: "خرید اشتراک حرفه‌ای", highlight: true },
+  { id: "factory", name: "عمده / کارخانه", price: 1990000, priceLabel: "۱,۹۹۰,۰۰۰", period: "تومان / ماه", features: ["چند کاربره برای واحد فروش", "نمایش ویژه در صفحه اول و تابلوی نرخ", "اتصال به موجودی انبار (API)", "کارشناس پاسخگویی اختصاصی", "گزارش تحلیلی هفتگی بازار"], cta: "خرید اشتراک عمده" },
+];
+
+const RULES = [
+  "کاربر موظف است اطلاعات درج‌شده در آگهی شامل نوع پلیمر، وضعیت (نو/بازیافتی)، مقدار و نرخ را با دقت و صداقت ثبت نماید.",
+  "مسئولیت صحت مشخصات فنی، وزن، درجه کیفیت و نرخ اعلامی بر عهده ثبت‌کننده آگهی است و سامانه ضامن آن نیست.",
+  "این سامانه صرفاً بستر اتصال خریدار و فروشنده است؛ مذاکره، بازرسی کالا و تسویه نهایی مستقیماً میان طرفین انجام می‌شود.",
+  "آگهی‌های حاوی اطلاعات نادرست، تبلیغات گمراه‌کننده یا کالای خارج از موضوع سامانه بدون اطلاع قبلی حذف خواهند شد.",
+  "نشان «تاییدشده» صرفاً بر اساس بررسی مقدماتی اطلاعات ثبتی کاربر است و به‌منزله ضمانت کیفیت یا اصالت کالا نیست.",
+  "کاربران پلن پایه مجاز به ثبت حداکثر سه آگهی فعال و مشاهده حداکثر پنج بار اطلاعات تماس هستند.",
+  "اطلاعات تماس فروشندگان صرفاً برای مقاصد معامله در اختیار قرار می‌گیرد؛ هرگونه سوءاستفاده یا انتشار غیرمجاز آن پیگرد دارد.",
+  "کاربران می‌توانند آگهی‌های خلاف قوانین را از طریق گزینه «گزارش آگهی» به کارشناسان سامانه اطلاع دهند.",
+  "پرداخت هزینه اشتراک به منزله پذیرش قوانین تعرفه و عدم بازگشت وجه پس از فعال‌سازی سرویس است.",
+];
+const PRIVACY_POINTS = [
+  { t: "چه اطلاعاتی جمع‌آوری می‌کنیم", d: "نام یا نام شرکت، شماره تماس، استان و شهر، و محتوای آگهی‌هایی که ثبت می‌کنید (عنوان، توضیحات، تصاویر، قیمت). شماره تماس هم‌زمان به‌عنوان شناسه ورود شما استفاده می‌شود." },
+  { t: "چطور از این اطلاعات استفاده می‌کنیم", d: "برای نمایش آگهی شما در بازار، امکان تماس خریداران و فروشندگان با یکدیگر، پیگیری اشتراک و تاریخچه آگهی‌های شما، و بهبود عملکرد سامانه." },
+  { t: "چه کسانی به اطلاعات شما دسترسی دارند", d: "عنوان، توضیحات، قیمت و شهر آگهی به‌صورت عمومی برای همه بازدیدکنندگان قابل مشاهده است. شماره تماس فقط پس از کلیک روی «نمایش شماره تماس» توسط کاربران واردشده به سامانه دیده می‌شود." },
+  { t: "شماره تماس و احراز هویت", d: "در حال حاضر شماره تماس کاربران از طریق سامانه‌های رسمی احراز هویت نمی‌شود و صرفاً بر پایه اعلام خود کاربر ثبت می‌گردد. مسئولیت صحت این شماره با کاربر ثبت‌کننده است." },
+  { t: "ذخیره‌سازی و امنیت", d: "اطلاعات شما روی زیرساخت ابری Supabase نگهداری می‌شود. تلاش می‌کنیم دسترسی به اطلاعات را با استانداردهای معمول امن نگه داریم، اما هیچ سامانه‌ای صد‌درصد مصون از خطا نیست." },
+  { t: "حذف اطلاعات", d: "می‌توانید در هر زمان از بخش «آگهی‌های من» آگهی‌های خود را حذف کنید. برای حذف کامل حساب کاربری و اطلاعات مرتبط، می‌توانید از طریق راه‌های ارتباطی انتهای سایت با ما تماس بگیرید." },
+  { t: "کوکی و ذخیره محلی مرورگر", d: "برای نگه‌داشتن نشست ورود شما، اطلاعاتی مانند شناسه کاربری در حافظه محلی مرورگر (localStorage) ذخیره می‌شود؛ این اطلاعات به سرور شخص ثالثی ارسال نمی‌شود." },
+];
+
+// شماره موبایل ایران باید ۱۱ رقم باشد و با ۰۹ شروع شود (مثال: 09123456789)
+function isValidIranPhone(phone) {
+  const digits = (phone || "").replace(/[\s-]/g, "");
+  return /^09\d{9}$/.test(digits);
+}
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000 / 60);
+  if (diff < 60) return `${diff} دقیقه پیش`;
+  const h = Math.floor(diff / 60);
+  if (h < 24) return `${h} ساعت پیش`;
+  return `${Math.floor(h / 24)} روز پیش`;
+}
+function polymerInfo(code) { return POLYMERS.find(p => p.code === code) || POLYMERS[0]; }
+function pseudoViews(id) {
+  let h = 0; for (let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i)) % 9973;
+  return 40 + (h % 420);
+}
+function planInfo(id) { return PLANS.find(p => p.id === id) || PLANS[0]; }
+
+/* ================= APP ================= */
+export default function PolymerMarket() {
+  const [tab, setTab] = useState("home");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [listings, setListings] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const [user, setUser] = useState(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginForm, setLoginForm] = useState({ name:"", phone:"", company:"" });
+  const [referredBy] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("ref") || null; } catch (e) { return null; }
+  });
+  const [referralCount, setReferralCount] = useState(0);
+
+  const [subscription, setSubscription] = useState({ plan: "free" });
+  const [invoices, setInvoices] = useState([]);
+  const [checkoutPlan, setCheckoutPlan] = useState(null);
+
+  const [selected, setSelected] = useState(null);
+  const [revealedIds, setRevealedIds] = useState([]);
+  const [revealCount, setRevealCount] = useState(0);
+  const [showMore, setShowMore] = useState(false);
+
+  const [form, setForm] = useState({ title:"", adType:"فروش", itemCategory: ITEM_CATEGORIES[0], polymer:"PP", customPolymer:"", condition:"نو", subCategory:"مواد اولیه", usageCategory:"", recycledForm:"زنده‌بار", machineType: MACHINE_TYPES[0], machineBrand:"", qty:"", price:"", negotiable:false, unit:"کیلوگرم", province:"تهران", city:"", desc:"", images:[], website:"" });
+  const [editingId, setEditingId] = useState(null);
+  const [formError, setFormError] = useState("");
+  const [gate, setGate] = useState(false);
+  const submitLockRef = useRef(false); // قفل همزمان (synchronous) — دقیقاً لحظه کلیک بررسی می‌شود، نه بعد از پاسخ سرور
+  const [submitting, setSubmitting] = useState(false);
+
+  const isPaid = subscription.plan !== "free";
+  const myCount = user ? listings.filter(l => l.sellerUid === user.id).length : 0;
+
+  useEffect(() => {
+    (async () => {
+      // real listings, shared by everyone, loaded from the database
+      const real = await db.listListings();
+      setListings(real.length ? real : SEED_LISTINGS);
+
+      // remember which profile this browser belongs to
+      const usr = await storage.get("user");
+      if (usr && usr.value) {
+        try {
+          const u = JSON.parse(usr.value);
+          if (u && u.id) {
+            setUser(u);
+            const sub = await db.getSubscription(u.id);
+            if (sub) setSubscription(sub);
+            const inv = await db.listInvoices(u.id);
+            setInvoices(inv);
+            setReferralCount(await db.countReferrals(u.id));
+          }
+        } catch(e){}
+      }
+
+      const rv = await storage.get("revealed-ids");
+      if (rv && rv.value) { try { setRevealedIds(JSON.parse(rv.value)); } catch(e){} }
+      const rc = await storage.get("reveal-count");
+      if (rc && rc.value) setRevealCount(parseInt(rc.value,10) || 0);
+
+      setLoaded(true);
+    })();
+  }, []);
+
+  const showToast = useCallback((msg) => { setToast(msg); setTimeout(() => setToast(null), 7000); }, []);
+
+  const doLogin = async (e) => {
+    e.preventDefault();
+    if (!loginForm.name || !loginForm.phone) { showToast("نام و شماره تماس الزامی است."); return; }
+    if (!isValidIranPhone(loginForm.phone)) { showToast("شماره موبایل معتبر نیست. باید ۱۱ رقم باشد و با ۰۹ شروع شود (مثال: 09123456789)."); return; }
+    const row = await db.upsertProfile({ name: loginForm.name, phone: loginForm.phone, company: loginForm.company, referredBy });
+    if (!row) { showToast("اتصال به سامانه ناموفق بود. خطا: " + (db.lastError ? (db.lastError.message || db.lastError.code || JSON.stringify(db.lastError)) : "نامشخص")); return; }
+    const u = { id: row.id, name: row.name, phone: row.phone, company: row.company };
+    setUser(u);
+    await storage.set("user", JSON.stringify(u));
+    const sub = await db.getSubscription(u.id);
+    setSubscription(sub || { plan: "free" });
+    setReferralCount(await db.countReferrals(u.id));
+    setShowLogin(false);
+    showToast(`خوش آمدید، ${u.name}`);
+  };
+  const doLogout = async () => { setUser(null); setSubscription({ plan: "free" }); setInvoices([]); await storage.set("user", ""); showToast("از حساب کاربری خارج شدید."); };
+
+  const requestContact = async (listing) => {
+    if (!user) { setShowLogin(true); return; }
+    if (revealedIds.includes(listing.id)) return;
+    // سقف مشاهده رایگان حذف شد؛ اطلاعات تماس برای همه کاربران وارد‌شده نامحدود است
+    const nextIds = [...revealedIds, listing.id];
+    const nextCount = revealCount + 1;
+    setRevealedIds(nextIds); setRevealCount(nextCount);
+    await storage.set("revealed-ids", JSON.stringify(nextIds));
+    await storage.set("reveal-count", String(nextCount));
+  };
+
+  const deleteListing = async (id) => {
+    const ok = await db.deleteListing(id);
+    if (!ok) { showToast("حذف آگهی ناموفق بود."); return; }
+    setListings(prev => prev.filter(l => l.id !== id));
+    showToast("آگهی حذف شد.");
+  };
+
+  const DEFAULT_FORM = { title:"", adType:"فروش", itemCategory: ITEM_CATEGORIES[0], polymer:"PP", customPolymer:"", condition:"نو", subCategory:"مواد اولیه", usageCategory:"", recycledForm:"زنده‌بار", machineType: MACHINE_TYPES[0], machineBrand:"", qty:"", price:"", negotiable:false, unit:"کیلوگرم", province:"تهران", city:"", desc:"", images:[], website:"" };
+
+  const submitAd = async (e) => {
+    e.preventDefault();
+    // قفل همزمان: اگر کلیک قبلی هنوز در حال پردازش است، این کلیک کاملاً نادیده گرفته می‌شود.
+    // این بررسی سنکرون است و پیش از هر await اجرا می‌شود، پس دو کلیک سریع هرگز هم‌زمان رد نمی‌شوند.
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setSubmitting(true);
+    try {
+      setFormError("");
+      if (!user) { setShowLogin(true); return; }
+      // فیلد مخفی ضد ربات: کاربر واقعی هیچ‌وقت این فیلد را پر نمی‌کند
+      if (form.website) { setFormError("خطا در ثبت آگهی. لطفاً دوباره تلاش کنید."); return; }
+      // محدودیت زمانی بین دو ثبت آگهی برای جلوگیری از ثبت انبوه
+      if (!editingId) {
+        const last = await storage.get("last_ad_submit");
+        const lastTs = last ? Number(last.value) : 0;
+        const waitMs = 15000 - (Date.now() - lastTs);
+        if (lastTs && waitMs > 0) { setFormError(`لطفاً ${Math.ceil(waitMs/1000)} ثانیه صبر کنید و دوباره تلاش کنید.`); return; }
+      }
+      // سقف آگهی رایگان حذف شد؛ ثبت آگهی برای همه کاربران نامحدود است
+      if (!form.title || !form.qty || (!form.negotiable && !form.price)) { setFormError("لطفاً عنوان، مقدار و قیمت (یا گزینه توافقی) را کامل کنید."); return; }
+      const isMachinery = form.itemCategory === ITEM_CATEGORIES[2];
+      const isProduct = form.itemCategory === ITEM_CATEGORIES[1];
+      if (!isMachinery && form.polymer === "OTHER" && !form.customPolymer) { setFormError("لطفاً نام پلیمر را در قسمت «غیره» وارد کنید."); return; }
+      const draft = {
+        title: form.title, adType: form.adType, itemCategory: form.itemCategory,
+        polymer: isMachinery ? "" : form.polymer, customPolymer: isMachinery ? "" : form.customPolymer,
+        condition: form.condition,
+        subCategory: isProduct ? "محصول پلاستیکی" : (!isMachinery ? "مواد اولیه" : ""),
+        usageCategory: isProduct ? form.usageCategory : "",
+        recycledForm: !isMachinery && !isProduct && form.condition === "بازیافتی" ? form.recycledForm : "",
+        machineType: isMachinery ? form.machineType : "", machineBrand: isMachinery ? form.machineBrand : "",
+        qty: form.qty, price: form.negotiable ? 0 : (Number(form.price)||0), negotiable: form.negotiable, unit: form.unit,
+        province: form.province, city: form.city, seller: user.company || user.name, phone: user.phone,
+        verified: isPaid, featured: subscription.plan === "factory", sellerUid: user.id, desc: form.desc, images: form.images || [],
+      };
+      if (editingId) {
+        const saved = await db.updateListing(editingId, draft);
+        if (!saved) { showToast("ویرایش آگهی ناموفق بود. خطا: " + (db.lastError ? (db.lastError.message || db.lastError.code || JSON.stringify(db.lastError)) : "نامشخص")); return; }
+        setListings(prev => prev.map(l => l.id === editingId ? saved : l));
+        setEditingId(null);
+        setForm(DEFAULT_FORM);
+        showToast("آگهی با موفقیت ویرایش شد.");
+        setTab("my");
+        return;
+      }
+      const saved = await db.insertListing(draft);
+      if (!saved) { showToast("ثبت آگهی ناموفق بود. خطا: " + (db.lastError ? (db.lastError.message || db.lastError.code || JSON.stringify(db.lastError)) : "نامشخص")); return; }
+      await storage.set("last_ad_submit", String(Date.now()));
+      setListings(prev => [saved, ...prev]);
+      setForm(DEFAULT_FORM);
+      showToast("آگهی شما با موفقیت در سامانه ثبت شد.");
+      setTab("market");
+    } finally {
+      submitLockRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const startEdit = (listing) => {
+    setForm({
+      title: listing.title, adType: listing.adType || "فروش", itemCategory: listing.itemCategory || ITEM_CATEGORIES[0],
+      polymer: listing.polymer || "PP", customPolymer: listing.customPolymer || "",
+      condition: listing.condition, subCategory: listing.subCategory || "مواد اولیه", usageCategory: listing.usageCategory || "",
+      recycledForm: listing.recycledForm || "زنده‌بار", machineType: listing.machineType || MACHINE_TYPES[0], machineBrand: listing.machineBrand || "",
+      qty: listing.qty, price: listing.negotiable ? "" : String(listing.price),
+      negotiable: !!listing.negotiable, unit: listing.unit, province: listing.province, city: listing.city || "",
+      desc: listing.desc || "", images: listing.images || [],
+    });
+    setEditingId(listing.id);
+    setGate(false);
+    setFormError("");
+    setTab("post");
+  };
+  const cancelEdit = () => { setEditingId(null); setForm(DEFAULT_FORM); setTab("my"); };
+
+  const completeCheckout = async (planId) => {
+    if (!user) return;
+    const plan = planInfo(planId);
+    const sub = await db.upsertSubscription(user.id, planId);
+    if (!sub) { showToast("فعال‌سازی اشتراک ناموفق بود."); return; }
+    setSubscription(sub);
+    const invoiceId = "INV-" + Date.now().toString().slice(-8);
+    await db.insertInvoice({ id: invoiceId, user_id: user.id, plan: plan.name, amount: plan.price });
+    setInvoices(prev => [{ id: invoiceId, plan: plan.name, amount: plan.price, date: Date.now() }, ...prev]);
+    setCheckoutPlan(null);
+    showToast(`اشتراک «${plan.name}» با موفقیت فعال شد.`);
+  };
+  const cancelSubscription = async () => {
+    if (!user) return;
+    const sub = await db.upsertSubscription(user.id, "free");
+    setSubscription(sub || { plan: "free" });
+    showToast("اشتراک شما به پلن پایه بازگشت.");
+  };
+
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [tab]);
+  useEffect(() => {
+    const titles = {
+      home: "پلیمریکا | سامانه رسمی بازار پلیمر و پلاستیک",
+      market: "بازار آگهی‌های خرید و فروش پلیمر | پلیمریکا",
+      post: "ثبت آگهی خرید یا فروش | پلیمریکا",
+      my: "آگهی‌های من | پلیمریکا",
+      pricing: "تعرفه اشتراک | پلیمریکا",
+      rules: "قوانین و مقررات | پلیمریکا",
+      about: "درباره سامانه | پلیمریکا",
+    };
+    document.title = titles[tab] || "پلیمریکا";
+  }, [tab]);
+
+  const isFirstTabRender = useRef(true);
+  useEffect(() => {
+    if (isFirstTabRender.current) {
+      isFirstTabRender.current = false;
+      window.history.replaceState({ tab }, "", "#" + tab);
+      return;
+    }
+    window.history.pushState({ tab }, "", "#" + tab);
+  }, [tab]);
+
+  /* ---------- دکمه بازگشت گوشی باید مودال‌های باز را ببندد، نه از سایت خارج کند ---------- */
+  const anyModalOpen = showLogin || !!selected || !!checkoutPlan || !!showMore;
+  const modalHistoryPushed = useRef(false);
+
+  // وقتی مودالی باز می‌شود، یک ورودی به تاریخچه مرورگر اضافه می‌کنیم تا دکمه بازگشت آن را ببندد
+  useEffect(() => {
+    if (anyModalOpen && !modalHistoryPushed.current) {
+      window.history.pushState({ modal: true, tab }, "");
+      modalHistoryPushed.current = true;
+    }
+  }, [anyModalOpen, tab]);
+
+  // اگر مودال با دکمه ضربدر (نه دکمه بازگشت) بسته شد، ورودی اضافه‌شده تاریخچه را هم عقب می‌بریم تا تمیز بماند
+  useEffect(() => {
+    if (!anyModalOpen && modalHistoryPushed.current) {
+      modalHistoryPushed.current = false;
+      window.history.back();
+    }
+  }, [anyModalOpen]);
+
+  useEffect(() => {
+    const onPopState = (e) => {
+      if (e.state && e.state.modal) {
+        // کاربر با دکمه بازگشت یک مودال باز را بسته است — فقط مودال بسته شود، تب تغییر نکند
+        modalHistoryPushed.current = false;
+        setShowLogin(false);
+        setSelected(null);
+        setCheckoutPlan(null);
+        setShowMore(false);
+        return;
+      }
+      const t = (e.state && e.state.tab) || "home";
+      setTab(t);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  return (
+    <div className="min-h-full">
+      {toast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 pm-panel rounded-lg px-4 py-3 flex items-center gap-2 shadow-xl">
+          <Icon name="check" size={16} className="pm-green" />
+          <span className="text-sm">{toast}</span>
+        </div>
+      )}
+
+      {showLogin && (
+        <div className="fixed inset-0 z-50 pm-scrim flex items-center justify-center p-4" onClick={() => setShowLogin(false)}>
+          <div className="pm-panel rounded-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1"><Icon name="lock" size={18} className="pm-navy" /><span className="font-bold">ورود به سامانه</span></div>
+            <p className="pm-muted text-xs mb-4">برای ثبت آگهی و مشاهده اطلاعات تماس فروشندگان، ابتدا احراز هویت کنید.</p>
+            <form onSubmit={doLogin} className="flex flex-col gap-3">
+              <input className="pm-input" placeholder="نام و نام خانوادگی" value={loginForm.name} onChange={e=>setLoginForm(f=>({...f,name:e.target.value}))} />
+              <input className="pm-input pm-mono" placeholder="09xxxxxxxxx" value={loginForm.phone} onChange={e=>setLoginForm(f=>({...f,phone:e.target.value}))} />
+              {loginForm.phone && !isValidIranPhone(loginForm.phone) && (
+                <div className="text-[11px] text-red-600 -mt-2">شماره باید ۱۱ رقم باشد و با ۰۹ شروع شود.</div>
+              )}
+              <input className="pm-input" placeholder="نام شرکت (اختیاری)" value={loginForm.company} onChange={e=>setLoginForm(f=>({...f,company:e.target.value}))} />
+              <button className="pm-btn-primary rounded-lg py-2.5 text-sm mt-1">ورود / ثبت‌نام</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="pm-btn-ghost rounded-lg py-2 text-sm">انصراف</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {checkoutPlan && (
+        <CheckoutModal plan={planInfo(checkoutPlan)} onClose={() => setCheckoutPlan(null)} onComplete={() => completeCheckout(checkoutPlan)} user={user} openLogin={() => { setCheckoutPlan(null); setShowLogin(true); }} />
+      )}
+
+      {selected && (
+        <DetailModal listing={selected} onClose={() => setSelected(null)} user={user}
+          revealed={revealedIds.includes(selected.id)} onReveal={() => requestContact(selected)}
+          isPaid={isPaid} revealCount={revealCount} showToast={showToast} />
+      )}
+
+      <header className="sticky top-0 z-30 pm-panel backdrop-blur border-b pm-line">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 flex items-center justify-between h-16">
+          <button onClick={() => setTab("home")} className="flex items-center gap-2.5 shrink-0">
+            <div className="seal w-10 h-10"><Icon name="layers" size={16} className="pm-navy" /></div>
+            <div className="font-extrabold text-lg tracking-tight pm-navy">پلیمریکا</div>
+          </button>
+
+          <div className="flex items-center gap-2">
+            {user ? (
+              <button onClick={() => setShowMore(true)} className="flex items-center gap-1.5 text-sm pm-navy">
+                <span className="hidden sm:inline">{user.name}</span>
+                {isPaid && <Icon name="crown" size={14} className="pm-gold" />}
+                <Icon name="user" size={18} />
+              </button>
+            ) : (
+              <button onClick={() => setShowLogin(true)} className="pm-btn-ghost rounded-lg px-3.5 py-2 text-xs flex items-center gap-1.5"><Icon name="lock" size={14} /> ورود</button>
+            )}
+            <button onClick={() => setShowMore(true)} aria-label="باز کردن منو" className="pm-muted"><Icon name="menu" size={22} /></button>
+          </div>
+        </div>
+      </header>
+
+      {showMore && (
+        <MoreSheet onClose={() => setShowMore(false)} setTab={(t) => { setTab(t); setShowMore(false); }}
+          user={user} isPaid={isPaid} onLogout={() => { doLogout(); setShowMore(false); }}
+          referralCount={referralCount} showToast={showToast} />
+      )}
+
+      {tab === "home" && <Home listings={listings} goMarket={() => setTab("market")} goPost={() => setTab("post")} openDetail={setSelected} />}
+      {tab === "market" && <Market listings={listings} loaded={loaded} openDetail={setSelected} />}
+      {tab === "post" && <PostAd form={form} setForm={setForm} onSubmit={submitAd} error={formError} myCount={myCount} gate={gate} setGate={setGate} goPricing={() => setTab("pricing")} user={user} openLogin={() => setShowLogin(true)} isPaid={isPaid} editingId={editingId} onCancelEdit={cancelEdit} submitting={submitting} />}
+      {tab === "my" && <MyAds listings={listings.filter(l => user && l.sellerUid === user.id)} user={user} openLogin={() => setShowLogin(true)} onDelete={deleteListing} onEdit={startEdit} goPost={() => setTab("post")} />}
+      {tab === "pricing" && <Pricing showToast={showToast} subscription={subscription} invoices={invoices} openCheckout={(id) => setCheckoutPlan(id)} onCancel={cancelSubscription} />}
+      {tab === "rules" && <Rules />}
+      {tab === "privacy" && <Privacy />}
+      {tab === "about" && <About />}
+
+      <Footer setTab={setTab} />
+      <BottomNav tab={tab} setTab={setTab} onMore={() => setShowMore(true)} />
+    </div>
+  );
+}
+
+function Home({ listings, goMarket, goPost, openDetail }) {
+  const [visible, setVisible] = useState(24);
+  return (
+    <main>
+      <section className="max-w-6xl mx-auto px-4 md:px-6 pt-10 pb-8">
+        <div className="inline-flex items-center gap-1.5 pm-badge-new rounded-full px-3 py-1 text-xs font-medium mb-5">
+          <Icon name="sparkles" size={13} /> بازار تخصصی خرید و فروش پلیمر
+        </div>
+        <h1 className="text-3xl md:text-5xl font-extrabold leading-[1.3] mb-4">
+          خرید و فروش <span className="pm-navy">پلاستیک و پلیمر</span>،<br /> نو یا بازیافتی
+        </h1>
+        <p className="pm-muted text-base leading-8 mb-7 max-w-lg">
+          گرانول، پودر، مستربچ، ضایعات و مواد بازیافتی را مستقیم از تولیدکننده، بازرگان یا واحد بازیافت پیدا کنید.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button onClick={goMarket} className="pm-btn-primary rounded-lg px-5 py-3 text-sm flex items-center gap-2"><Icon name="search" size={16} /> مشاهده بازار آگهی‌ها</button>
+          <button onClick={goPost} className="pm-btn-ghost rounded-lg px-5 py-3 text-sm flex items-center gap-2"><Icon name="plus" size={16} /> ثبت آگهی</button>
+        </div>
+      </section>
+
+      <section className="max-w-6xl mx-auto px-4 md:px-6 pb-10">
+        <a href="/prices.html" className="group flex items-center justify-between gap-4 rounded-2xl px-6 py-5 md:px-8 md:py-6 pm-glass-dark">
+          <div className="flex items-center gap-4">
+            <span className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/10" style={{background:"rgba(169,129,47,0.22)", backdropFilter:"blur(8px)"}}>
+              <Icon name="trendingUp" size={22} className="pm-gold-bright" />
+            </span>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="w-1.5 h-1.5 rounded-full pm-gold" style={{background:"#A9812F",display:"inline-block"}}></span>
+                <span className="pm-mono text-[11px] tracking-wider" style={{color:"#C9A94F"}}>به‌روزرسانی هفتگی</span>
+              </div>
+              <div className="text-white font-bold text-base md:text-lg">قیمت هفته پلیمر را ببینید</div>
+              <div className="text-[13px]" style={{color:"rgba(244,241,232,0.65)"}}>قیمت‌های پایه رسمی پتروشیمی برای PP، PE، PVC، PET و PS</div>
+            </div>
+          </div>
+          <span className="hidden md:flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold flex-shrink-0 transition-transform group-hover:translate-x-[-2px]" style={{background:"#A9812F",color:"#211A0A"}}>
+            مشاهده تابلو <Icon name="chevronLeft" size={15} />
+          </span>
+        </a>
+      </section>
+
+      <section className="max-w-6xl mx-auto px-4 md:px-6 pb-14">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">همه آگهی‌ها</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+          {listings.slice(0, visible).map(l => <ListingCard key={l.id} l={l} onClick={() => openDetail(l)} />)}
+        </div>
+        {visible < listings.length && (
+          <div className="flex justify-center mt-6">
+            <button onClick={() => setVisible(v => v + 24)} className="pm-btn-ghost rounded-lg px-5 py-2.5 text-sm font-medium">نمایش آگهی‌های بیشتر ({listings.length - visible} آگهی دیگر)</button>
+          </div>
+        )}
+      </section>
+
+      <section className="max-w-6xl mx-auto px-4 md:px-6 pb-16 grid md:grid-cols-3 gap-4">
+        {[
+          ["factory","برای تولیدکنندگان","مواد اولیه مورد نیاز خط تولید را مستقیم از عرضه‌کنندگان معتبر تهیه کنید."],
+          ["recycle","برای واحدهای بازیافت","ضایعات و گرانول بازیافتی خود را به خریداران صنعتی سراسر کشور بفروشید."],
+          ["shieldCheck","معاملات مطمئن‌تر","فروشندگان دارای نشان «تاییدشده» با احراز هویت مشخص شده‌اند."],
+        ].map(([icon,title,body],i) => (
+          <div key={i} className="pm-panel rounded-xl p-5">
+            <Icon name={icon} size={20} className={`mb-3 ${i===0 ? "pm-navy" : i===1 ? "pm-teal" : "pm-gold"}`} />
+            <div className="font-bold mb-1.5">{title}</div>
+            <div className="pm-muted text-sm leading-6">{body}</div>
+          </div>
+        ))}
+      </section>
+    </main>
+  );
+}
+
+function ListingCard({ l, onClick }) {
+  const isMachinery = l.itemCategory === ITEM_CATEGORIES[2];
+  const info = isMachinery ? { swatch: "#c9c2b3" } : polymerInfo(l.polymer);
+  const hasImg = l.images && l.images.length > 0;
+  const polyLabel = isMachinery ? (l.machineType || "ماشین‌آلات") : (l.polymer === "OTHER" ? (l.customPolymer || "غیره") : l.polymer);
+  return (
+    <div onClick={onClick} className={`pm-panel pm-card rounded-xl overflow-hidden cursor-pointer flex flex-row sm:flex-col ${l.featured ? "pm-ring-gold" : ""}`}>
+      <div className="w-28 sm:w-full aspect-square shrink-0 relative overflow-hidden" style={hasImg ? {} : { background: `linear-gradient(135deg, ${info.swatch}, #ffffff)` }}>
+        {hasImg ? (
+          <img src={l.images[0]} loading="lazy" decoding="async" className="w-full h-full object-cover" alt={l.title} />
+        ) : isMachinery ? (
+          <div className="w-full h-full flex items-center justify-center opacity-40"><Icon name="factory" size={30} /></div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center"><span className="pm-mono text-lg font-bold opacity-40">{l.polymer === "OTHER" ? "؟" : l.polymer}</span></div>
+        )}
+        <div className="absolute top-2 right-2 flex flex-col gap-1 items-start">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${l.condition === "نو" ? "pm-badge-new" : "pm-badge-recycled"}`}>{l.condition}</span>
+          {l.adType === "خرید" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/90 pm-navy">درخواست خرید</span>}
+        </div>
+        {l.featured && <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#A9812F] text-white">ویژه</span>}
+        {hasImg && l.images.length > 1 && (
+          <span className="absolute bottom-1.5 left-1.5 bg-black/55 text-white text-[9px] px-1 py-0.5 rounded-full flex items-center gap-0.5"><Icon name="camera" size={9} /> {l.images.length}</span>
+        )}
+      </div>
+      <div className="p-2.5 flex flex-col gap-1 flex-1 min-w-0">
+        <div className="flex items-center gap-1 text-[11px] pm-muted">
+          {isMachinery ? <Icon name="factory" size={11} /> : <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ background: info.swatch, border: "1px solid rgba(0,0,0,.15)" }} />}
+          <span className="truncate">{polyLabel}</span>
+        </div>
+        <div className="font-semibold text-[13px] leading-5 line-clamp-2 sm:min-h-[2.5rem]">{l.title}</div>
+        <div className="flex items-center gap-1 text-[11px] pm-muted"><Icon name="mapPin" size={11} />{l.city ? `${l.city}، ` : ""}{l.province}</div>
+        <div className="pm-mono font-bold pm-navy text-[13px] mt-0.5">{l.negotiable ? "توافقی" : `${l.price.toLocaleString("fa-IR")} تومان`}</div>
+        <button className="mt-2 w-full rounded-lg py-1.5 text-[12px] font-medium pm-btn-primary hidden sm:block">
+          {l.adType === "خرید" ? "ارائه پیشنهاد" : "مشاهده جزئیات"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SkeletonGridCard() {
+  return (
+    <div className="pm-panel rounded-xl overflow-hidden flex flex-row sm:flex-col">
+      <div className="w-28 sm:w-full aspect-square shrink-0 skeleton" />
+      <div className="p-2.5 flex flex-col gap-2 flex-1">
+        <div className="h-3 w-1/2 rounded skeleton" />
+        <div className="h-4 w-full rounded skeleton" />
+        <div className="h-3 w-2/3 rounded skeleton" />
+        <div className="h-7 w-full rounded-lg skeleton mt-1 hidden sm:block" />
+      </div>
+    </div>
+  );
+}
+
+function Market({ listings, loaded, openDetail }) {
+  const [q, setQ] = useState(""); const [fItemCategory, setFItemCategory] = useState(""); const [fPolymer, setFPolymer] = useState(""); const [fMachineType, setFMachineType] = useState(""); const [fCondition, setFCondition] = useState(""); const [fProvince, setFProvince] = useState(""); const [fCity, setFCity] = useState(""); const [fAdType, setFAdType] = useState(""); const [sort, setSort] = useState("newest");
+  const [visible, setVisible] = useState(24);
+
+  const filtered = useMemo(() => {
+    let res = listings
+      .filter(l => !fItemCategory || l.itemCategory === fItemCategory)
+      .filter(l => !fPolymer || l.polymer === fPolymer)
+      .filter(l => !fMachineType || l.machineType === fMachineType)
+      .filter(l => !fCondition || l.condition === fCondition)
+      .filter(l => !fProvince || l.province === fProvince)
+      .filter(l => !fCity || l.city === fCity)
+      .filter(l => !fAdType || l.adType === fAdType)
+      .filter(l => !q || l.title.includes(q) || l.seller.includes(q) || (l.desc && l.desc.includes(q)));
+    if (sort === "newest") res = res.slice().sort((a,b)=>b.created-a.created);
+    if (sort === "cheap") res = res.slice().sort((a,b)=>a.price-b.price);
+    if (sort === "expensive") res = res.slice().sort((a,b)=>b.price-a.price);
+    const featured = res.filter(l=>l.featured); const rest = res.filter(l=>!l.featured);
+    return [...featured, ...rest];
+  }, [listings, q, fItemCategory, fPolymer, fMachineType, fCondition, fProvince, fCity, fAdType, sort]);
+
+  useEffect(() => { setVisible(24); }, [q, fItemCategory, fPolymer, fMachineType, fCondition, fProvince, fCity, fAdType, sort]);
+
+  return (
+    <main className="max-w-6xl mx-auto px-4 md:px-6 py-10">
+      <div className="mb-6">
+        <div className="pm-mono text-xs pm-gold mb-1.5 tracking-wider">MARKETPLACE</div>
+        <h1 className="text-2xl font-bold mb-1">بازار آگهی‌های پلیمر</h1>
+        <p className="pm-muted text-sm">{filtered.length} آگهی یافت شد</p>
+      </div>
+
+      <div className="pm-panel rounded-xl p-4 mb-6 grid md:grid-cols-[1fr_auto_auto_auto_auto_auto_auto_auto] gap-3">
+        <div className="relative">
+          <Icon name="search" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pm-navy" />
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="جست‌وجوی عنوان یا نام فروشنده..." className="w-full pm-input pr-9" />
+        </div>
+        <Select value={fAdType} onChange={setFAdType} placeholder="نوع آگهی" options={[["فروش","فروش"],["خرید","خرید"]]} />
+        <Select value={fItemCategory} onChange={v => { setFItemCategory(v); setFPolymer(""); setFMachineType(""); setFCondition(""); }} placeholder="دسته کالا" options={ITEM_CATEGORIES.map(c=>[c,c])} />
+        {fItemCategory === ITEM_CATEGORIES[2] ? (
+          <Select value={fMachineType} onChange={setFMachineType} placeholder="نوع دستگاه" options={MACHINE_TYPES.map(c=>[c,c])} />
+        ) : (
+          <Select value={fPolymer} onChange={setFPolymer} placeholder="نوع پلیمر" options={POLYMERS.map(p=>[p.code, p.code === "OTHER" ? p.name : `${p.name} (${p.code})`])} />
+        )}
+        <Select value={fCondition} onChange={setFCondition} placeholder="وضعیت" options={fItemCategory === ITEM_CATEGORIES[2] ? MACHINE_CONDITIONS.map(c=>[c,c]) : fItemCategory === ITEM_CATEGORIES[1] ? [["نو","نو"],["کارکرده","کارکرده"]] : [["نو","نو"],["بازیافتی","بازیافتی"]]} />
+        <Select value={fProvince} onChange={e => { setFProvince(e); setFCity(""); }} placeholder="استان" options={PROVINCES.map(p=>[p,p])} />
+        <Select value={fCity} onChange={setFCity} placeholder="شهر" options={(CITIES[fProvince] || []).map(c=>[c,c])} />
+        <Select value={sort} onChange={setSort} placeholder="مرتب‌سازی" options={[["newest","جدیدترین"],["cheap","ارزان‌ترین"],["expensive","گران‌ترین"]]} />
+      </div>
+
+      {!loaded ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">{[1,2,3,4,5,6,7,8].map(i=><SkeletonGridCard key={i} />)}</div>
+      ) : filtered.length === 0 ? (
+        <div className="pm-panel rounded-xl py-16 text-center">
+          <Icon name="filter" size={22} className="pm-muted mx-auto mb-3" />
+          <div className="font-semibold mb-1">آگهی‌ای با این فیلترها پیدا نشد</div>
+          <div className="pm-muted text-sm mb-4">فیلترها را تغییر دهید یا جست‌وجوی خود را ساده‌تر کنید.</div>
+          <button onClick={() => { setQ(""); setFItemCategory(""); setFPolymer(""); setFMachineType(""); setFCondition(""); setFProvince(""); setFCity(""); setFAdType(""); }} className="pm-btn-ghost rounded-lg px-4 py-2 text-sm font-medium">پاک کردن همه فیلترها</button>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">{filtered.slice(0, visible).map(l => <ListingCard key={l.id} l={l} onClick={() => openDetail(l)} />)}</div>
+          {visible < filtered.length && (
+            <div className="flex justify-center mt-6">
+              <button onClick={() => setVisible(v => v + 24)} className="pm-btn-ghost rounded-lg px-5 py-2.5 text-sm font-medium">نمایش آگهی‌های بیشتر ({filtered.length - visible} آگهی دیگر)</button>
+            </div>
+          )}
+        </>
+      )}
+    </main>
+  );
+}
+
+function Select({ value, onChange, placeholder, options }) {
+  return (
+    <div className="relative">
+      <select value={value} onChange={e=>onChange(e.target.value)} className="appearance-none pm-input pl-8 min-w-[9rem]">
+        <option value="">{placeholder}</option>
+        {options.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <Icon name="chevronDown" size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pm-gold pointer-events-none" />
+    </div>
+  );
+}
+
+function DetailModal({ listing, onClose, user, revealed, onReveal, isPaid, revealCount, showToast }) {
+  const isMachinery = listing.itemCategory === ITEM_CATEGORIES[2];
+  const isProduct = listing.itemCategory === ITEM_CATEGORIES[1];
+  const info = isMachinery ? { swatch: "#c9c2b3" } : polymerInfo(listing.polymer);
+  const views = pseudoViews(listing.id);
+  const images = listing.images && listing.images.length ? listing.images : null;
+  const [activeImg, setActiveImg] = useState(0);
+  const [showReport, setShowReport] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 pm-scrim flex items-center justify-center p-4" onClick={onClose}>
+      <div className="pm-panel rounded-xl w-full max-w-lg max-h-[88vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+        {images ? (
+          <div>
+            <div className="h-56 relative bg-black/5">
+              <img src={images[activeImg]} className="w-full h-full object-cover" alt={listing.title} />
+              <button onClick={onClose} aria-label="بستن" className="absolute top-3 left-3 bg-white/80 rounded-full p-1.5"><Icon name="x" size={16} /></button>
+              {images.length > 1 && (
+                <>
+                  <button onClick={() => setActiveImg(i => (i - 1 + images.length) % images.length)} aria-label="تصویر قبلی" className="absolute top-1/2 -translate-y-1/2 right-2 bg-white/80 rounded-full p-1.5"><Icon name="chevronRight" size={16} /></button>
+                  <button onClick={() => setActiveImg(i => (i + 1) % images.length)} aria-label="تصویر بعدی" className="absolute top-1/2 -translate-y-1/2 left-2 bg-white/80 rounded-full p-1.5"><Icon name="chevronLeft" size={16} /></button>
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/55 text-white text-[10px] px-2 py-0.5 rounded-full">{activeImg+1} / {images.length}</span>
+                </>
+              )}
+            </div>
+            {images.length > 1 && (
+              <div className="flex gap-1.5 p-2 border-b pm-line overflow-x-auto pm-scrollbar">
+                {images.map((src,i) => (
+                  <button key={i} onClick={() => setActiveImg(i)} className={`w-12 h-12 rounded-md overflow-hidden shrink-0 border ${activeImg===i ? "border-[#A9812F] border-2" : "pm-line"}`}>
+                    <img src={src} className="w-full h-full object-cover" alt="" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="h-24 flex items-center justify-center relative" style={{ background: `linear-gradient(135deg, ${info.swatch}, #ffffff)` }}>
+            {isMachinery ? <Icon name="factory" size={34} className="opacity-40" /> : <span className="pm-mono text-3xl font-extrabold opacity-40">{listing.polymer === "OTHER" ? "؟" : listing.polymer}</span>}
+            <button onClick={onClose} aria-label="بستن" className="absolute top-3 left-3 bg-white/80 rounded-full p-1.5"><Icon name="x" size={16} /></button>
+          </div>
+        )}
+        <div className="p-5 flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="pm-mono text-[11px] pm-muted mb-1">شماره پرونده: {listing.id}</div>
+              <div className="flex items-center gap-2 mb-1">
+                {listing.adType === "خرید" && <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[rgba(27,51,88,0.08)] pm-navy border border-[rgba(27,51,88,0.3)]">درخواست خرید</span>}
+              </div>
+              <div className="font-bold text-lg">{listing.title}</div>
+            </div>
+            <div className={`stamp shrink-0 ${listing.verified ? "stamp-green" : "stamp-gray"}`}>{listing.verified ? "تاییدشده" : "در حال بررسی"}</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {isMachinery ? (
+              <>
+                <Info label="نوع دستگاه" value={listing.machineType || "ماشین‌آلات و تجهیزات"} />
+                <Info label="وضعیت" value={listing.condition} />
+                {listing.machineBrand && <Info label="برند / مدل" value={listing.machineBrand} />}
+              </>
+            ) : (
+              <>
+                <Info label="نوع پلیمر" value={listing.polymer === "OTHER" ? (listing.customPolymer || "غیره / متفرقه") : `${info.name} (${listing.polymer})`} />
+                <Info label="وضعیت" value={listing.condition} />
+                {isProduct && listing.usageCategory && <Info label="کاربرد محصول" value={listing.usageCategory} />}
+                {!isProduct && listing.condition === "بازیافتی" && listing.recycledForm && <Info label="نوع بازیافتی" value={listing.recycledForm} />}
+              </>
+            )}
+            <Info label="مقدار موجود" value={listing.qty} />
+            <Info label="موقعیت" value={listing.city ? `${listing.city}، ${listing.province}` : listing.province} />
+            <Info label="نرخ" value={listing.negotiable ? "توافقی" : `${listing.price.toLocaleString("fa-IR")} تومان / ${listing.unit}`} />
+            <Info label="بازدید" value={views.toLocaleString("fa-IR")} />
+          </div>
+
+          {listing.desc && (
+            <div>
+              <div className="text-xs pm-muted font-medium mb-1">توضیحات فنی</div>
+              <p className="text-sm leading-7">{listing.desc}</p>
+            </div>
+          )}
+
+          <div className="pm-panel-2 rounded-lg p-3.5">
+            <div className="text-xs pm-muted font-medium mb-2">اطلاعات تماس فروشنده</div>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-sm font-semibold">{listing.seller}</span>
+              {revealed ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="pm-mono text-sm pm-navy font-bold">{listing.phone}</span>
+                  <a href={`tel:${listing.phone}`} className="pm-btn-gold rounded-lg px-3 py-1.5 text-xs flex items-center gap-1.5"><Icon name="phone" size={13} /> تماس</a>
+                  <a href={`sms:${listing.phone}`} className="pm-btn-ghost rounded-lg px-3 py-1.5 text-xs flex items-center gap-1.5"><Icon name="messageCircle" size={13} /> پیامک</a>
+                </div>
+              ) : (
+                <button onClick={onReveal} className="pm-btn-gold rounded-lg px-3 py-1.5 text-xs flex items-center gap-1.5"><Icon name="phone" size={13} /> نمایش شماره تماس</button>
+              )}
+            </div>
+            {!user && <p className="pm-muted text-[11px] mt-2">برای مشاهده اطلاعات تماس ابتدا وارد سامانه شوید.</p>}
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => setShowReport(true)} className="pm-btn-ghost rounded-lg px-3 py-2 text-xs flex items-center gap-1.5"><Icon name="flag" size={13} /> گزارش آگهی</button>
+            <button onClick={() => showToast("لینک آگهی کپی شد.")} className="pm-btn-ghost rounded-lg px-3 py-2 text-xs flex items-center gap-1.5"><Icon name="share" size={13} /> اشتراک‌گذاری</button>
+          </div>
+        </div>
+      </div>
+      {showReport && <ReportModal listing={listing} user={user} onClose={() => setShowReport(false)} showToast={showToast} />}
+    </div>
+  );
+}
+function ReportModal({ listing, user, onClose, showToast }) {
+  const [reason, setReason] = useState(REPORT_REASONS[0]);
+  const [details, setDetails] = useState("");
+  const [sending, setSending] = useState(false);
+  const submit = async () => {
+    setSending(true);
+    const ok = await db.createReport({ listingId: listing.id, listingTitle: listing.title, reason, details, reporterPhone: user ? user.phone : "" });
+    setSending(false);
+    onClose();
+    showToast(ok ? "گزارش شما ثبت شد و توسط کارشناسان بررسی می‌شود." : "ثبت گزارش با خطا مواجه شد؛ لطفاً دوباره تلاش کنید.");
+  };
+  return (
+    <div className="fixed inset-0 z-[60] pm-scrim flex items-center justify-center p-4" onClick={onClose}>
+      <div className="pm-panel rounded-xl w-full max-w-sm p-5" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="font-bold flex items-center gap-1.5"><Icon name="flag" size={16} className="pm-navy" /> گزارش آگهی</div>
+          <button onClick={onClose} aria-label="بستن"><Icon name="x" size={18} /></button>
+        </div>
+        <div className="text-xs pm-muted mb-3 line-clamp-1">آگهی: {listing.title}</div>
+        <label className="block text-xs pm-muted mb-1.5">دلیل گزارش</label>
+        <select value={reason} onChange={e=>setReason(e.target.value)} className="pm-input mb-3">
+          {REPORT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <label className="block text-xs pm-muted mb-1.5">توضیح تکمیلی (اختیاری)</label>
+        <textarea value={details} onChange={e=>setDetails(e.target.value)} rows={3} placeholder="جزئیات بیشتر درباره تخلف را بنویسید..." className="pm-input mb-4" />
+        <button onClick={submit} disabled={sending} className="w-full pm-btn-primary rounded-lg py-2.5 text-sm font-medium disabled:opacity-60">{sending ? "در حال ارسال..." : "ارسال گزارش"}</button>
+      </div>
+    </div>
+  );
+}
+function Info({ label, value }) {
+  return (<div className="pm-panel-2 rounded-lg p-2.5"><div className="pm-muted text-[10px] mb-0.5">{label}</div><div className="font-semibold">{value}</div></div>);
+}
+
+function PostAd({ form, setForm, onSubmit, error, myCount, gate, setGate, goPricing, user, openLogin, isPaid, editingId, onCancelEdit, submitting }) {
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const [imgBusy, setImgBusy] = useState(false);
+  const [imgErr, setImgErr] = useState("");
+
+  const handleImages = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    setImgErr("");
+    const room = 4 - (form.images ? form.images.length : 0);
+    if (room <= 0) { setImgErr("حداکثر ۴ تصویر برای هر آگهی مجاز است."); return; }
+    setImgBusy(true);
+    try {
+      const picked = files.slice(0, room);
+      const isHeic = picked.some(f => /heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name || ""));
+      if (isHeic) {
+        setImgErr("این عکس با فرمت HEIC ذخیره شده که مرورگرها نمی‌توانند بازش کنند. لطفاً در گوشی خود به مسیر تنظیمات دوربین ← فرمت تصویر بروید و گزینه «HEIF/کارآمد بالا» را خاموش کرده و روی JPEG بگذارید، سپس دوباره عکس بگیرید.");
+        setImgBusy(false);
+        return;
+      }
+      const uploaded = await Promise.all(picked.map(f => uploadListingImage(f, 1000, 0.72)));
+      setForm(f => ({ ...f, images: [...(f.images || []), ...uploaded].slice(0, 4) }));
+    } catch (err) {
+      const msg = err && err.message;
+      if (msg === "not-image") setImgErr("این فایل تصویر نیست؛ لطفاً یک عکس (jpg/png) انتخاب کنید.");
+      else if (msg === "bad-image") setImgErr("این تصویر با فرمتی ذخیره شده که مرورگر نمی‌تواند بازش کند (احتمالاً HEIC). در تنظیمات دوربین گوشی، فرمت عکس را روی JPEG بگذارید و دوباره امتحان کنید.");
+      else if (msg === "upload-failed") setImgErr("بارگذاری تصویر روی سرور ناموفق بود؛ اتصال اینترنت را بررسی کنید و دوباره امتحان کنید.");
+      else setImgErr("بارگذاری تصویر ناموفق بود؛ لطفاً دوباره امتحان کنید.");
+    }
+    setImgBusy(false);
+  };
+  const removeImage = (idx) => setForm(f => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
+  if (!user) {
+    return (
+      <main className="max-w-lg mx-auto px-4 md:px-6 py-16 text-center">
+        <div className="pm-panel rounded-xl p-8">
+          <Icon name="lock" size={24} className="pm-navy mx-auto mb-3" />
+          <div className="text-lg font-bold mb-2">برای ثبت آگهی ابتدا وارد سامانه شوید</div>
+          <p className="pm-muted text-sm mb-6">فرآیند ثبت آگهی نیازمند احراز هویت پایه (نام و شماره تماس) است.</p>
+          <button onClick={openLogin} className="pm-btn-primary rounded-lg px-5 py-2.5 text-sm">ورود / ثبت‌نام</button>
+        </div>
+      </main>
+    );
+  }
+  return (
+    <main className="max-w-3xl mx-auto px-4 md:px-6 py-10">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div>
+          <div className="pm-mono text-xs pm-gold mb-1.5 tracking-wider">{editingId ? "ویرایش آگهی" : "فرم شماره ۱ — ثبت آگهی"}</div>
+          <h1 className="text-2xl font-bold mb-1">{editingId ? "ویرایش آگهی ثبت‌شده" : "ثبت آگهی خرید یا فروش"}</h1>
+          <p className="pm-muted text-sm">{editingId ? "تغییرات را اعمال کنید و ذخیره بزنید." : `شما تاکنون ${myCount} آگهی ثبت کرده‌اید؛ در دوره راه‌اندازی، ثبت آگهی نامحدود و رایگان است.`}</p>
+        </div>
+        {editingId && <button onClick={onCancelEdit} className="pm-btn-ghost rounded-lg px-4 py-2 text-xs shrink-0">انصراف از ویرایش</button>}
+      </div>
+
+      {gate ? (
+        <div className="pm-panel rounded-xl p-8 text-center">
+          <Icon name="shieldCheck" size={26} className="pm-gold mx-auto mb-3" />
+          <div className="text-lg font-bold mb-2">سقف آگهی رایگان شما تمام شده است</div>
+          <p className="pm-muted text-sm mb-6 max-w-md mx-auto leading-7">برای ثبت آگهی‌های بیشتر و دریافت نشان «تاییدشده»، به پلن حرفه‌ای یا عمده ارتقا دهید.</p>
+          <div className="flex justify-center gap-3">
+            <button onClick={goPricing} className="pm-btn-primary rounded-lg px-5 py-2.5 text-sm">مشاهده تعرفه اشتراک</button>
+            <button onClick={() => setGate(false)} className="pm-btn-ghost rounded-lg px-5 py-2.5 text-sm">بازگشت</button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={onSubmit} className="pm-panel rounded-xl p-5 md:p-6 grid md:grid-cols-2 gap-4 overflow-hidden">
+          {/* فیلد مخفی ضد ربات - کاربران واقعی این را نمی‌بینند و پر نمی‌کنند */}
+          <input type="text" name="website" value={form.website || ""} onChange={set("website")} tabIndex="-1" autoComplete="off" aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }} />
+          <Field label="عنوان آگهی" full><input value={form.title} onChange={set("title")} placeholder="مثلاً: گرانول HDPE بادی درجه یک" className="pm-input" /></Field>
+
+          <Field label="نوع آگهی" full>
+            <div className="flex gap-2">
+              {AD_TYPES.map(t => (
+                <button type="button" key={t} onClick={() => setForm(f=>({...f, adType:t}))} className={`flex-1 rounded-lg py-2.5 text-sm border ${form.adType===t ? "pm-btn-primary border-transparent" : "pm-line pm-muted"}`}>
+                  {t === "فروش" ? "فروشنده" : "خریدار"}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field label="دسته کالا" full>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {ITEM_CATEGORIES.map(c => (
+                <button type="button" key={c} onClick={() => setForm(f=>({...f, itemCategory:c, condition:"نو", unit: c === ITEM_CATEGORIES[2] ? "دستگاه" : (f.unit === "دستگاه" ? "کیلوگرم" : f.unit)}))} className={`flex-1 rounded-lg py-2.5 text-xs sm:text-sm border ${form.itemCategory===c ? "pm-btn-primary border-transparent" : "pm-line pm-muted"}`}>{c}</button>
+              ))}
+            </div>
+          </Field>
+
+          {form.itemCategory === ITEM_CATEGORIES[2] ? (
+            <>
+              <Field label="نوع دستگاه" full>
+                <select value={form.machineType} onChange={set("machineType")} className="pm-input">
+                  {MACHINE_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="برند / مدل (اختیاری)">
+                <input value={form.machineBrand} onChange={set("machineBrand")} placeholder="مثلاً: بی‌تا پلاست، ساخت چین، مدل ۹۰..." className="pm-input" />
+              </Field>
+              <Field label="وضعیت دستگاه">
+                <div className="flex gap-2 flex-wrap">
+                  {MACHINE_CONDITIONS.map(c => (
+                    <button type="button" key={c} onClick={() => setForm(f=>({...f, condition:c}))} className={`flex-1 rounded-lg py-2.5 text-xs sm:text-sm border ${form.condition===c ? "pm-btn-primary border-transparent" : "pm-line pm-muted"}`}>{c}</button>
+                  ))}
+                </div>
+              </Field>
+            </>
+          ) : form.itemCategory === ITEM_CATEGORIES[1] ? (
+            <>
+              <Field label="نوع پلیمر / ماده تشکیل‌دهنده" full>
+                <select value={form.polymer} onChange={set("polymer")} className="pm-input">
+                  {POLYMERS.map(p => <option key={p.code} value={p.code}>{p.code === "OTHER" ? p.name : `${p.name} (${p.code})`}</option>)}
+                </select>
+                {form.polymer === "OTHER" && (
+                  <input value={form.customPolymer} onChange={set("customPolymer")} placeholder="نام یا نوع ماده را بنویسید" className="pm-input mt-2" />
+                )}
+              </Field>
+              <Field label="وضعیت">
+                <div className="flex gap-2">
+                  {["نو","کارکرده"].map(c => (
+                    <button type="button" key={c} onClick={() => setForm(f=>({...f, condition:c}))} className={`flex-1 rounded-lg py-2.5 text-sm border ${form.condition===c ? "pm-btn-primary border-transparent" : "pm-line pm-muted"}`}>{c}</button>
+                  ))}
+                </div>
+              </Field>
+              <Field label="کاربرد محصول" full>
+                <select value={form.usageCategory} onChange={set("usageCategory")} className="pm-input">
+                  <option value="">انتخاب کنید</option>
+                  {USAGE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="نوع پلیمر / ماده" full>
+                <select value={form.polymer} onChange={set("polymer")} className="pm-input">
+                  {POLYMERS.map(p => <option key={p.code} value={p.code}>{p.code === "OTHER" ? p.name : `${p.name} (${p.code})`}</option>)}
+                </select>
+                {form.polymer !== "OTHER" && (
+                  <div className="pm-muted text-[11px] mt-1.5">مثال کاربرد: {(POLYMERS.find(p => p.code === form.polymer) || {}).hint}</div>
+                )}
+                {form.polymer === "OTHER" && (
+                  <input value={form.customPolymer} onChange={set("customPolymer")} placeholder="نام یا نوع ماده را بنویسید (مثلاً: پلی‌اتیلن رنگی مخلوط)" className="pm-input mt-2" />
+                )}
+              </Field>
+              <Field label="وضعیت">
+                <div className="flex gap-2">
+                  {["نو","بازیافتی"].map(c => (
+                    <button type="button" key={c} onClick={() => setForm(f=>({...f, condition:c}))} className={`flex-1 rounded-lg py-2.5 text-sm border ${form.condition===c ? "pm-btn-primary border-transparent" : "pm-line pm-muted"}`}>{c}</button>
+                  ))}
+                </div>
+              </Field>
+              {form.condition === "بازیافتی" && (
+                <Field label="نوع بازیافتی" full>
+                  <select value={form.recycledForm} onChange={set("recycledForm")} className="pm-input">
+                    {RECYCLED_FORMS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </Field>
+              )}
+            </>
+          )}
+
+          <Field label={form.itemCategory === ITEM_CATEGORIES[2] ? "تعداد دستگاه" : "مقدار موجود"}>
+            <div className="flex flex-col gap-2">
+              <input value={form.qty === "نامحدود" ? "" : form.qty} onChange={set("qty")} disabled={form.qty === "نامحدود"} placeholder={form.itemCategory === ITEM_CATEGORIES[2] ? "مثلاً: ۱ دستگاه" : "مثلاً: 5 تن"} className="pm-input disabled:opacity-50" />
+              <label className="flex items-center gap-2 text-xs pm-muted">
+                <input type="checkbox" checked={form.qty === "نامحدود"} onChange={e => setForm(f=>({...f, qty: e.target.checked ? "نامحدود" : ""}))} />
+                موجودی نامحدود است
+              </label>
+            </div>
+          </Field>
+
+          <Field label="قیمت (تومان)">
+            <div className="flex flex-col gap-2">
+              <input value={form.price} onChange={set("price")} type="number" disabled={form.negotiable} placeholder="مثلاً: 45000" className="pm-input pm-mono disabled:opacity-50" />
+              <label className="flex items-center gap-2 text-xs pm-muted">
+                <input type="checkbox" checked={form.negotiable} onChange={e => setForm(f=>({...f, negotiable: e.target.checked, price: e.target.checked ? "" : f.price}))} />
+                قیمت توافقی است
+              </label>
+            </div>
+          </Field>
+          {form.itemCategory !== ITEM_CATEGORIES[2] && (
+            <Field label="واحد قیمت">
+              <select value={form.unit} onChange={set("unit")} className="pm-input">{["کیلوگرم","تن","عدد بشکه"].map(u=><option key={u} value={u}>{u}</option>)}</select>
+            </Field>
+          )}
+          <Field label="استان">
+            <select value={form.province} onChange={e => setForm(f => ({ ...f, province: e.target.value, city: "" }))} className="pm-input">{PROVINCES.map(p=><option key={p} value={p}>{p}</option>)}</select>
+          </Field>
+          <Field label="شهر">
+            <select value={form.city} onChange={set("city")} className="pm-input">
+              <option value="">انتخاب کنید</option>
+              {(CITIES[form.province] || []).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="فروشنده / تماس" full>
+            <div className="pm-panel-2 rounded-lg p-3 text-sm flex items-center justify-between">
+              <span>{user.company || user.name}</span>
+              <span className="pm-mono pm-muted">{user.phone}</span>
+            </div>
+          </Field>
+          <Field label={`تصاویر محصول (${(form.images||[]).length}/۴)`} full>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {(form.images||[]).map((src,i) => (
+                <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border pm-line">
+                  <img src={src} className="w-full h-full object-cover" alt="" />
+                  <button type="button" onClick={() => removeImage(i)} className="absolute top-1 left-1 bg-black/60 rounded-full p-0.5"><Icon name="x" size={12} className="text-white" /></button>
+                </div>
+              ))}
+              {(form.images||[]).length < 4 && (
+                <label className="w-20 h-20 rounded-lg border-2 border-dashed pm-line flex flex-col items-center justify-center gap-1 cursor-pointer pm-muted hover:border-[#A9812F] hover:text-[#A9812F]">
+                  {imgBusy ? <Icon name="loader" size={18} className="spin" /> : <Icon name="camera" size={18} />}
+                  <span className="text-[10px]">افزودن</span>
+                  <input type="file" accept="image/*" onChange={handleImages} className="hidden" />
+                </label>
+              )}
+            </div>
+            {imgErr && <div className="text-xs text-[#8B3A32]">{imgErr}</div>}
+            <div className="pm-muted text-[11px]">حداکثر ۴ عکس؛ برای نمایش بهتر، عکس واضح و نورگیر از محصول ثبت کنید.</div>
+          </Field>
+          <Field label="توضیحات فنی" full><textarea value={form.desc} onChange={set("desc")} rows={4} placeholder="گرید، رنگ، درصد افت وزنی، بسته‌بندی و..." className="pm-input resize-none" /></Field>
+          {error && <div className="md:col-span-2 text-sm text-[#8B3A32] bg-[#F7EAE7] border border-[#E3C4BC] rounded-lg px-3 py-2.5">{error}</div>}
+          <div className="md:col-span-2 flex justify-end">
+            <button type="submit" disabled={submitting} className="pm-btn-primary rounded-lg px-6 py-3 text-sm flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting ? (
+                <><Icon name="loader" size={16} className="spin" /> در حال ثبت...</>
+              ) : (
+                <><Icon name={editingId ? "check" : "plus"} size={16} /> {editingId ? "ذخیره تغییرات" : "ثبت آگهی"}</>
+              )}
+            </button>
+          </div>
+        </form>
+      )}
+    </main>
+  );
+}
+function Field({ label, children, full }) {
+  return (<label className={`flex flex-col gap-1.5 ${full ? "md:col-span-2" : ""}`}><span className="text-xs pm-muted font-medium">{label}</span>{children}</label>);
+}
+
+function MyAds({ listings, user, openLogin, onDelete, onEdit, goPost }) {
+  if (!user) {
+    return (
+      <main className="max-w-lg mx-auto px-4 md:px-6 py-16 text-center">
+        <div className="pm-panel rounded-xl p-8">
+          <Icon name="lock" size={24} className="pm-navy mx-auto mb-3" />
+          <div className="text-lg font-bold mb-2">برای مشاهده آگهی‌های خود وارد شوید</div>
+          <button onClick={openLogin} className="pm-btn-primary rounded-lg px-5 py-2.5 text-sm mt-2">ورود / ثبت‌نام</button>
+        </div>
+      </main>
+    );
+  }
+  return (
+    <main className="max-w-6xl mx-auto px-4 md:px-6 py-10">
+      <div className="mb-6">
+        <div className="pm-mono text-xs pm-gold mb-1.5 tracking-wider">پرونده کاربری</div>
+        <h1 className="text-2xl font-bold mb-1">آگهی‌های ثبت‌شده توسط شما</h1>
+        <p className="pm-muted text-sm">{listings.length} آگهی</p>
+      </div>
+      {listings.length === 0 ? (
+        <div className="pm-panel rounded-xl py-16 text-center">
+          <div className="font-semibold mb-1">هنوز آگهی‌ای ثبت نکرده‌اید</div>
+          <button onClick={goPost} className="pm-btn-primary rounded-lg px-5 py-2.5 text-sm mt-4">ثبت اولین آگهی</button>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-3 gap-4">
+          {listings.map(l => (
+            <div key={l.id} className="pm-panel rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${l.condition==="نو" ? "pm-badge-new" : "pm-badge-recycled"}`}>{l.condition}</span>
+                <span className={`stamp stamp-sm ${l.verified ? "stamp-green" : "stamp-gray"}`}>{l.verified ? "تاییدشده" : "بررسی"}</span>
+              </div>
+              <div className="font-semibold">{l.title}</div>
+              <div className="pm-mono text-sm pm-navy font-bold">{l.negotiable ? "قیمت توافقی" : `${l.price.toLocaleString("fa-IR")} تومان / ${l.unit}`}</div>
+              <div className="flex gap-2">
+                <button onClick={() => onEdit(l)} className="flex-1 pm-btn-ghost rounded-lg py-2 text-xs flex items-center justify-center gap-1.5"><Icon name="fileText" size={13} /> ویرایش</button>
+                <button onClick={() => onDelete(l.id)} className="flex-1 pm-btn-ghost rounded-lg py-2 text-xs flex items-center justify-center gap-1.5 text-[#8B3A32]"><Icon name="trash" size={13} /> حذف</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+
+/* ---------- Checkout / Payment ---------- */
+function CheckoutModal({ plan, onClose, onComplete, user, openLogin }) {
+  const [step, setStep] = useState("form"); // form -> processing -> done
+  const [card, setCard] = useState("");
+  const [err, setErr] = useState("");
+
+  if (!user) {
+    return (
+      <div className="fixed inset-0 z-50 pm-scrim flex items-center justify-center p-4" onClick={onClose}>
+        <div className="pm-panel rounded-xl p-6 w-full max-w-sm text-center" onClick={e=>e.stopPropagation()}>
+          <Icon name="lock" size={22} className="pm-navy mx-auto mb-3" />
+          <div className="font-bold mb-2">ابتدا وارد سامانه شوید</div>
+          <p className="pm-muted text-sm mb-4">برای خرید اشتراک، احراز هویت پایه لازم است.</p>
+          <button onClick={openLogin} className="pm-btn-primary rounded-lg px-5 py-2.5 text-sm w-full">ورود / ثبت‌نام</button>
+        </div>
+      </div>
+    );
+  }
+
+  const pay = (e) => {
+    e.preventDefault();
+    setErr("");
+    const digits = card.replace(/\s/g, "");
+    if (digits.length < 16 || !/^\d+$/.test(digits)) {
+      setErr("لطفاً شماره کارت ۱۶ رقمی معتبر وارد کنید.");
+      return;
+    }
+    setStep("processing");
+    setTimeout(() => {
+      setStep("done");
+      setTimeout(() => {
+        onComplete();
+      }, 1200);
+    }, 1800);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 pm-scrim flex items-center justify-center p-4" onClick={onClose}>
+      <div className="pm-panel rounded-xl w-full max-w-md p-6" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b pm-line pb-4 mb-4">
+          <div className="font-bold flex items-center gap-2">
+            <Icon name="card" size={18} className="pm-navy" />
+            پرداخت و فعال‌سازی اشتراک
+          </div>
+          <button onClick={onClose} aria-label="بستن"><Icon name="x" size={18} /></button>
+        </div>
+
+        {step === "form" && (
+          <form onSubmit={pay} className="flex flex-col gap-4">
+            <div className="pm-panel-2 rounded-lg p-3 flex items-center justify-between text-sm">
+              <span className="pm-muted">پلن انتخابی:</span>
+              <span className="font-bold pm-navy">{plan.name} ({plan.priceLabel} تومان)</span>
+            </div>
+            <div>
+              <label className="block text-xs pm-muted mb-1 font-medium">شماره کارت بانک (آزمایشی)</label>
+              <input
+                value={card}
+                onChange={e => setCard(e.target.value)}
+                placeholder="6037 - ____ - ____ - ____"
+                className="pm-input pm-mono text-center tracking-widest"
+                maxLength={19}
+              />
+            </div>
+            {err && <div className="text-xs text-[#8B3A32] bg-[#F7EAE7] p-2 rounded-lg">{err}</div>}
+            <div className="pm-muted text-[11px] leading-5">
+              * این یک درگاه شبیه‌سازی‌شده برای تست سامانه است و هیچ مبلغ واقعی کسر نخواهد شد.
+            </div>
+            <button type="submit" className="pm-btn-primary rounded-lg py-3 text-sm font-bold mt-2">
+              تایید و پرداخت {plan.priceLabel} تومان
+            </button>
+          </form>
+        )}
+
+        {step === "processing" && (
+          <div className="py-12 text-center flex flex-col items-center gap-3">
+            <Icon name="loader" size={28} className="spin pm-navy" />
+            <div className="font-medium text-sm">در حال ارتباط با درگاه پرداخت...</div>
+          </div>
+        )}
+
+        {step === "done" && (
+          <div className="py-10 text-center flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-[#EAF3DE] flex items-center justify-center text-[#3B6C1D]">
+              <Icon name="check" size={24} />
+            </div>
+            <div className="font-bold text-lg">پرداخت با موفقیت انجام شد</div>
+            <p className="pm-muted text-xs">اشتراک شما فعال گردید.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Pricing({ showToast, subscription, invoices, openCheckout, onCancel }) {
+  const currentPlan = subscription.plan;
+  return (
+    <main className="max-w-6xl mx-auto px-4 md:px-6 py-10">
+      <div className="mb-8 text-center max-w-xl mx-auto">
+        <div className="pm-mono text-xs pm-gold mb-1.5 tracking-wider">PLANS & PRICING</div>
+        <h1 className="text-2xl md:text-3xl font-extrabold mb-2">تعرفه اشتراک و ارتقای حساب</h1>
+        <p className="pm-muted text-sm leading-7">با ارتقا به پلن‌های حرفه‌ای، نشان تاییدشده دریافت کنید و آگهی‌های خود را در اولویت دید خریداران قرار دهید.</p>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-5 mb-12">
+        {PLANS.map(p => {
+          const isCurrent = currentPlan === p.id;
+          return (
+            <div key={p.id} className={`pm-panel rounded-xl p-6 flex flex-col justify-between relative ${p.highlight ? "pm-ring-navy" : ""}`}>
+              {p.highlight && <span className="absolute -top-3 right-6 bg-[#1B3358] text-white text-[10px] font-bold px-3 py-0.5 rounded-full">پیشنهاد ویژه</span>}
+              <div>
+                <div className="font-bold text-lg mb-1">{p.name}</div>
+                <div className="mb-4">
+                  <span className="pm-mono text-2xl font-extrabold pm-navy">{p.priceLabel}</span>
+                  <span className="pm-muted text-xs mr-1">{p.period}</span>
+                </div>
+                <ul className="flex flex-col gap-2.5 text-xs pm-muted mb-6">
+                  {p.features.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <Icon name="check" size={14} className="pm-green shrink-0" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {isCurrent ? (
+                <div className="flex flex-col gap-2">
+                  <div className="pm-badge-new rounded-lg py-2.5 text-center text-xs font-bold">پلن فعلی شما</div>
+                  {p.id !== "free" && (
+                    <button onClick={onCancel} className="text-xs text-[#8B3A32] underline hover:no-underline text-center">لغو اشتراک</button>
+                  )}
+                </div>
+              ) : (
+                <button onClick={() => openCheckout(p.id)} className={`w-full rounded-lg py-2.5 text-xs font-bold ${p.highlight ? "pm-btn-primary" : "pm-btn-ghost"}`}>
+                  {p.cta}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {invoices.length > 0 && (
+        <div className="pm-panel rounded-xl p-5 max-w-2xl mx-auto">
+          <div className="font-bold text-sm mb-3 flex items-center gap-2">
+            <Icon name="receipt" size={16} className="pm-navy" />
+            سوابق پرداخت و فاکتورها
+          </div>
+          <div className="flex flex-col gap-2">
+            {invoices.map(inv => (
+              <div key={inv.id} className="pm-panel-2 rounded-lg p-3 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-semibold">{inv.plan}</span>
+                  <span className="pm-mono pm-muted mr-2">({inv.id})</span>
+                </div>
+                <div className="pm-mono font-bold">{Number(inv.amount).toLocaleString("fa-IR")} تومان</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function Rules() {
+  return (
+    <main className="max-w-3xl mx-auto px-4 md:px-6 py-10">
+      <h1 className="text-2xl font-bold mb-2">قوانین و مقررات استفاده</h1>
+      <p className="pm-muted text-sm mb-6">لطفاً پیش از استفاده از خدمات سامانه، قوانین زیر را با دقت مطالعه فرمایید.</p>
+      <div className="pm-panel rounded-xl p-6 flex flex-col gap-4">
+        {RULES.map((r, i) => (
+          <div key={i} className="flex items-start gap-3 text-sm leading-7 border-b pm-line pb-3 last:border-0 last:pb-0">
+            <span className="pm-mono font-bold pm-navy text-xs mt-0.5">{i + 1}.</span>
+            <div>{r}</div>
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
+
+function Privacy() {
+  return (
+    <main className="max-w-3xl mx-auto px-4 md:px-6 py-10">
+      <h1 className="text-2xl font-bold mb-2">حریم خصوصی و حفاظت از اطلاعات</h1>
+      <p className="pm-muted text-sm mb-6">سامانه پلیمریکا متعهد به حفظ اطلاعات شخصی کاربران است.</p>
+      <div className="pm-panel rounded-xl p-6 flex flex-col gap-5">
+        {PRIVACY_POINTS.map((p, i) => (
+          <div key={i} className="flex flex-col gap-1 border-b pm-line pb-4 last:border-0 last:pb-0">
+            <div className="font-bold text-sm pm-navy">{p.t}</div>
+            <div className="pm-muted text-xs leading-6">{p.d}</div>
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
+
+function About() {
+  return (
+    <main className="max-w-3xl mx-auto px-4 md:px-6 py-10">
+      <h1 className="text-2xl font-bold mb-2">درباره پلیمریکا</h1>
+      <p className="pm-muted text-sm mb-6">پلتفرم تخصصی معرفی و معامله مواد اولیه و محصولات صنعت پلاستیک</p>
+      <div className="pm-panel rounded-xl p-6 leading-8 text-sm flex flex-col gap-4">
+        <p>
+          پلیمریکا با هدف تسهیل ارتباط مستقیم میان تولیدکنندگان، بازرگانان، واحدهای بازیافت و کارخانجات صنایع تکمیلی پلاستیک راه‌اندازی شده است.
+        </p>
+        <p>
+          در این سامانه می‌توانید بدون واسطه به آگهی‌های عرضه و تقاضای انواع گرانول، پودر پتروشیمی، مستربچ، ضایعات پلیمری و ماشین‌آلات دسترسی داشته باشید.
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function MoreSheet({ onClose, setTab, user, isPaid, onLogout, referralCount, showToast }) {
+  const shareLink = user ? `${window.location.origin}?ref=${user.id}` : "";
+  const copyRef = () => {
+    navigator.clipboard.writeText(shareLink);
+    showToast("لینک دعوت اختصاصی شما کپی شد.");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 pm-scrim flex justify-end" onClick={onClose}>
+      <div className="pm-panel w-full max-w-xs h-full p-6 flex flex-col justify-between overflow-y-auto" onClick={e=>e.stopPropagation()}>
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <span className="font-bold text-lg pm-navy">منوی سامانه</span>
+            <button onClick={onClose} aria-label="بستن"><Icon name="x" size={20} /></button>
+          </div>
+
+          {user && (
+            <div className="pm-panel-2 rounded-xl p-4 mb-6">
+              <div className="font-bold text-sm">{user.name}</div>
+              <div className="pm-mono text-xs pm-muted mb-2">{user.phone}</div>
+              {user.company && <div className="text-xs pm-navy mb-2">{user.company}</div>}
+              <div className="flex items-center gap-1 text-xs font-semibold pm-gold">
+                {isPaid ? <><Icon name="crown" size={14} /> اشتراک فعال</> : "پلن پایه (رایگان)"}
+              </div>
+            </div>
+          )}
+
+          <nav className="flex flex-col gap-2">
+            <button onClick={() => setTab("home")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="home" size={18} /> صفحه اصلی</button>
+            <button onClick={() => setTab("market")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="grid" size={18} /> بازار آگهی‌ها</button>
+            <button onClick={() => setTab("post")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="plus" size={18} /> ثبت آگهی جدید</button>
+            <button onClick={() => setTab("my")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="package" size={18} /> آگهی‌های من</button>
+            <button onClick={() => setTab("pricing")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="crown" size={18} /> تعرفه اشتراک</button>
+            <a href="/prices.html" className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="trendingUp" size={18} /> تابلوی قیمت هفته</a>
+            <hr className="my-2 pm-line" />
+            <button onClick={() => setTab("rules")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="fileText" size={18} /> قوانین و مقررات</button>
+            <button onClick={() => setTab("privacy")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="shieldCheck" size={18} /> حریم خصوصی</button>
+            <button onClick={() => setTab("about")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="layers" size={18} /> درباره ما</button>
+          </nav>
+
+          {user && (
+            <div className="mt-6 pt-4 border-t pm-line">
+              <div className="text-xs font-bold mb-2">دعوت از همکاران</div>
+              <div className="pm-muted text-[11px] mb-2">تعداد معرفی‌شده‌ها: {referralCount} نفر</div>
+              <button onClick={copyRef} className="w-full pm-btn-ghost rounded-lg py-2 text-xs flex items-center justify-center gap-1.5"><Icon name="share" size={14} /> کپی لینک دعوت</button>
+            </div>
+          )}
+        </div>
+
+        {user && (
+          <button onClick={onLogout} className="pm-btn-ghost rounded-lg py-2.5 text-xs text-[#8B3A32] flex items-center justify-center gap-2 mt-6">
+            <Icon name="logOut" size={16} /> خروج از حساب کاربری
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BottomNav({ tab, setTab, onMore }) {
+  return (
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 pm-panel border-t pm-line flex items-center justify-around h-14 px-2">
+      <button onClick={() => setTab("home")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="home"?"pm-navy font-bold":"pm-muted"}`}>
+        <Icon name="home" size={18} /> خانه
+      </button>
+      <button onClick={() => setTab("market")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="market"?"pm-navy font-bold":"pm-muted"}`}>
+        <Icon name="grid" size={18} /> بازار
+      </button>
+      <button onClick={() => setTab("post")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="post"?"pm-navy font-bold":"pm-muted"}`}>
+        <div className="w-8 h-8 rounded-full pm-btn-primary flex items-center justify-center -mt-4 shadow-md"><Icon name="plus" size={18} /></div>
+        ثبت
+      </button>
+      <button onClick={() => setTab("my")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="my"?"pm-navy font-bold":"pm-muted"}`}>
+        <Icon name="package" size={18} /> آگهی‌های من
+      </button>
+      <button onClick={onMore} className="flex flex-col items-center gap-1 text-[10px] pm-muted">
+        <Icon name="menu" size={18} /> منو
+      </button>
+    </div>
+  );
+}
+
+function Footer({ setTab }) {
+  return (
+    <footer className="pm-panel border-t pm-line mt-20 pb-20 md:pb-8 pt-10">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-xs pm-muted">
+        <div className="flex items-center gap-2">
+          <Icon name="layers" size={18} className="pm-navy" />
+          <span className="font-bold pm-navy text-sm">پلیمریکا</span>
+          <span>— سامانه تخصصی بازار پلیمر و پلاستیک</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setTab("rules")} className="hover:underline">قوانین</button>
+          <button onClick={() => setTab("privacy")} className="hover:underline">حریم خصوصی</button>
+          <button onClick={() => setTab("pricing")} className="hover:underline">تعرفه‌ها</button>
+          <button onClick={() => setTab("about")} className="hover:underline">درباره ما</button>
+        </div>
+      </div>
+    </footer>
+  );
+}
