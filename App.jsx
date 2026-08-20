@@ -610,7 +610,8 @@ export default function PolymerMarket() {
       )}
 
       {showLogin && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLogin(false)}>
+<div class="fixed inset-0 z-50 bg-white shadow-xl overflow-y-auto">
+
           <div className="pm-panel rounded-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-1"><Icon name="lock" size={18} className="pm-navy" /><span className="font-bold">ورود به سامانه</span></div>
             <p className="pm-muted text-xs mb-4">برای ثبت آگهی و مشاهده اطلاعات تماس فروشندگان، ابتدا احراز هویت کنید.</p>
