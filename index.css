@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,8 +9,6 @@
    پالت: سرمه‌ای (Navy) / طلایی (Gold) / کرم (Cream)
    فونت: وزیرمتن (Vazirmatn) — فونت رسمی و خوانا برای فارسی/RTL
    ========================================================================= */
-
-@import url("https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap");
 
 :root {
   /* --- رنگ‌های اصلی --- */
@@ -59,7 +59,6 @@
     direction: rtl;
     font-family: "Vazirmatn", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
     background-color: var(--pm-cream);
-    /* چند لکه رنگی محو در پس‌زمینه، تا افکت بلور شیشه‌ای روی پنل‌ها قابل‌مشاهده باشد */
     background-image:
       radial-gradient(circle at 8% 8%, rgba(169, 129, 47, 0.16), transparent 32%),
       radial-gradient(circle at 92% 18%, rgba(27, 51, 88, 0.14), transparent 38%),
@@ -81,7 +80,6 @@
 
 @layer components {
 
-  /* ---------- سطوح / پنل‌ها (شیشه‌ای — Glassmorphism) ---------- */
   .pm-panel {
     background: var(--pm-glass-bg);
     border: 1px solid var(--pm-glass-border);
@@ -95,7 +93,6 @@
     backdrop-filter: blur(10px) saturate(140%);
     -webkit-backdrop-filter: blur(10px) saturate(140%);
   }
-  /* مرورگرهایی که backdrop-filter را پشتیبانی نمی‌کنند، به پس‌زمینه مات و خوانا برمی‌گردند */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     .pm-panel { background: var(--pm-paper); }
     .pm-panel-2 { background: var(--pm-cream-2); }
@@ -112,22 +109,19 @@
     border-color: var(--pm-line) !important;
   }
 
-  /* ---------- رنگ متن ---------- */
   .pm-navy { color: var(--pm-navy); }
   .pm-gold { color: var(--pm-gold); }
-  .pm-gold-bright { color: var(--pm-gold-bright); } /* فقط روی زمینه‌ی تیره (کنتراست کافی) استفاده شود */
+  .pm-gold-bright { color: var(--pm-gold-bright); }
   .pm-teal { color: var(--pm-teal); }
   .pm-green { color: var(--pm-green); }
   .pm-muted { color: var(--pm-muted); }
 
-  /* ---------- اعداد / قیمت‌ها ---------- */
   .pm-mono {
     font-family: "Vazirmatn", system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.01em;
   }
 
-  /* ---------- ورودی‌ها ---------- */
   .pm-input {
     width: 100%;
     background: rgba(255, 255, 255, 0.85);
@@ -152,7 +146,6 @@
     cursor: not-allowed;
   }
 
-  /* ---------- دکمه‌ها ---------- */
   .pm-btn-primary {
     background: linear-gradient(135deg, var(--pm-navy) 0%, var(--pm-navy-2) 100%);
     color: #fdfbf5;
@@ -190,7 +183,6 @@
     border-color: var(--pm-navy);
   }
 
-  /* ---------- نشان‌های وضعیت (نو/بازیافتی) ---------- */
   .pm-badge-new {
     background: var(--pm-gold-tint);
     color: var(--pm-gold);
@@ -202,7 +194,6 @@
     border: 1px solid rgba(43, 110, 99, 0.28);
   }
 
-  /* ---------- مهر تاییدیه (شبیه مهر رسمی) ---------- */
   .stamp {
     display: inline-flex;
     align-items: center;
@@ -229,7 +220,6 @@
     background: rgba(110, 98, 82, 0.08);
   }
 
-  /* ---------- مهر / لوگوی سایت ---------- */
   .seal {
     display: flex;
     align-items: center;
@@ -242,7 +232,6 @@
     -webkit-backdrop-filter: blur(6px);
   }
 
-  /* ---------- اسکلت لودینگ ---------- */
   .skeleton {
     position: relative;
     overflow: hidden;
@@ -260,7 +249,6 @@
     100% { transform: translateX(100%); }
   }
 
-  /* ---------- چرخش (لودر) ---------- */
   .spin {
     animation: pm-spin 1s linear infinite;
   }
@@ -268,7 +256,6 @@
     to { transform: rotate(360deg); }
   }
 
-  /* ---------- اسکرول‌بار سفارشی (نوار تصاویر) ---------- */
   .pm-scrollbar::-webkit-scrollbar {
     height: 5px;
   }
@@ -280,7 +267,6 @@
     background: transparent;
   }
 
-  /* ---------- هاله‌ی نرم دور کارت/پلن ویژه (به‌جای خط سخت) ---------- */
   .pm-ring-gold {
     box-shadow: 0 0 0 1.5px rgba(169, 129, 47, 0.55), 0 0 24px -6px rgba(169, 129, 47, 0.45);
   }
@@ -288,7 +274,6 @@
     box-shadow: 0 0 0 1.5px rgba(27, 51, 88, 0.55), 0 0 24px -6px rgba(27, 51, 88, 0.35);
   }
 
-  /* ---------- بنر تیره شیشه‌ای (مثلاً بنر «قیمت هفته پلیمر») ---------- */
   .pm-glass-dark {
     background: linear-gradient(90deg, rgba(27, 51, 88, 0.86) 0%, rgba(18, 35, 63, 0.9) 100%);
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -297,7 +282,6 @@
     -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
 
-  /* ---------- پرده‌ی پشت مودال‌ها (پس‌زمینه صفحه را هم محو می‌کند) ---------- */
   .pm-scrim {
     background: rgba(18, 20, 15, 0.42);
     backdrop-filter: blur(6px);
@@ -309,7 +293,6 @@
   }
 }
 
-/* ---------- کاهش انیمیشن برای کاربرانی که آن را در تنظیمات دستگاه خاموش کرده‌اند ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
