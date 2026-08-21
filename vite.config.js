@@ -4,7 +4,6 @@ import { resolve } from "path";
 import { copyFileSync } from "fs";
 
 const staticFiles = [
-  "index.html",
   "materials.html",
   "prices.html",
   "robots.txt",
@@ -32,7 +31,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, "polymarket-2.html"),
+        main: resolve(__dirname, "index.html"),
       },
     },
   },
