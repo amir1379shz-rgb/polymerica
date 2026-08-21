@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>قیمت هفته پلیمر | پلیمریکا</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* --- همان توکن‌های رنگی index.css سایت اصلی، برای هماهنگی کامل --- */
+    --navy:#1B3358;
+    --navy-deep:#12233F;
+    --gold:#8A6220;       /* طلایی قابل‌خواندن روی زمینه روشن */
+    --gold-strong:#A9812F;/* طلایی برای پس‌زمینه دکمه/نشان */
+    --gold-soft:#C9A94F;  /* طلایی روشن — فقط روی زمینه تیره */
+    --teal:#2B6E63;
+    --cream:#FAF6EC;
+    --cream-2:#F3ECD9;
+    --ink:#201A10;
+    --muted:#6E6252;
+    --line:rgba(32,26,16,0.12);
+    --line-strong:rgba(32,26,16,0.2);
+    --up:#3B6C1D;
+    --down:#8B3A32;
+
+    --glass-bg:rgba(255,253,246,0.72);
+    --glass-bg-2:rgba(243,236,217,0.6);
+    --glass-border:rgba(255,255,255,0.55);
+    --glass-blur:18px;
+
+    --shadow-sm:0 1px 2px rgba(32,26,16,0.06), 0 1px 1px rgba(32,26,16,0.04);
+    --shadow-md:0 8px 24px -8px rgba(27,51,88,0.18), 0 2px 8px rgba(32,26,16,0.06);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background-color:var(--cream);
+    background-image:
+      radial-gradient(circle at 8% 8%, rgba(169,129,47,0.16), transparent 32%),
+      radial-gradient(circle at 92% 18%, rgba(27,51,88,0.14), transparent 38%),
+      radial-gradient(circle at 25% 85%, rgba(43,110,99,0.09), transparent 40%),
+      radial-gradient(circle at 90% 92%, rgba(169,129,47,0.1), transparent 35%);
+    background-attachment:fixed;
+    color:var(--ink);
+    font-family:'Vazirmatn',sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:rgba(169,129,47,0.18); color:var(--navy); }
+  .mono{ font-family:'Space Mono',monospace; }
+
+  .board-wrap{
+    max-width:980px;
+    margin:0 auto;
+    padding:24px 16px 64px;
+  }
+
+  /* ---------- نوار بالا ---------- */
+  .top-nav{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:22px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-weight:800;
+    font-size:1.1rem;
+    color:var(--navy);
+    text-decoration:none;
+  }
+  .brand .seal{
+    width:34px;height:34px;
+    border-radius:999px;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 30% 25%, rgba(255,255,255,0.9), var(--glass-bg-2) 70%);
+    border:1.5px solid rgba(169,129,47,0.25);
+    box-shadow:inset 0 0 0 3px rgba(255,255,255,0.6), var(--shadow-sm);
+  }
+  .brand span{color:var(--gold);}
+  .back-link{
+    font-size:0.82rem;
+    color:var(--navy);
+    text-decoration:none;
+    border:1px solid var(--line-strong);
+    padding:7px 16px;
+    border-radius:100px;
+    background:var(--glass-bg);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    transition:background 0.15s ease, border-color 0.15s ease;
+  }
+  .back-link:hover{ background:rgba(27,51,88,0.08); border-color:var(--navy); }
+
+  /* ---------- هیرو شیشه‌ای تیره ---------- */
+  .hero{
+    background:linear-gradient(90deg, rgba(27,51,88,0.86) 0%, rgba(18,35,63,0.9) 100%);
+    border:1px solid rgba(255,255,255,0.14);
+    box-shadow:var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.1);
+    backdrop-filter:blur(20px) saturate(160%);
+    -webkit-backdrop-filter:blur(20px) saturate(160%);
+    border-radius:18px;
+    padding:32px 28px 26px;
+    color:var(--cream);
+    position:relative;
+    overflow:hidden;
+    margin-bottom:22px;
+  }
+  .hero::after{
+    content:"";
+    position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 85% -10%, rgba(199,169,79,0.32), transparent 55%),
+      radial-gradient(circle at -5% 110%, rgba(43,110,99,0.3), transparent 55%);
+    pointer-events:none;
+  }
+  .eyebrow{
+    display:flex; align-items:center; gap:8px;
+    font-size:0.72rem;
+    letter-spacing:0.12em;
+    color:var(--gold-soft);
+    text-transform:uppercase;
+    position:relative; z-index:1;
+  }
+  .dot{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--gold-soft);
+    animation:pulse 1.8s infinite ease-in-out;
+  }
+  @keyframes pulse{
+    0%,100%{opacity:1;transform:scale(1);}
+    50%{opacity:0.4;transform:scale(0.7);}
+  }
+  .hero h1{
+    font-size:1.9rem;
+    font-weight:800;
+    margin:14px 0 6px;
+    position:relative; z-index:1;
+  }
+  .hero p{
+    margin:0;
+    font-size:0.92rem;
+    color:rgba(250,246,236,0.78);
+    line-height:1.9;
+    max-width:56ch;
+    position:relative; z-index:1;
+  }
+  .hero-meta{
+    display:flex; gap:22px;
+    margin-top:20px;
+    position:relative; z-index:1;
+    flex-wrap:wrap;
+  }
+  .hero-meta .label{ font-size:0.68rem; color:rgba(250,246,236,0.55); letter-spacing:0.06em; }
+  .hero-meta .value{ font-size:0.95rem; color:var(--gold-soft); margin-top:2px; }
+
+  /* ---------- سربرگ بخش ---------- */
+  .section-label{
+    font-size:0.72rem;
+    color:var(--gold);
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+  .section-title{
+    font-size:1.15rem;
+    font-weight:800;
+    margin:0 0 16px;
+  }
+
+  /* ---------- شبکه کارت‌های مواد ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+    gap:14px;
+  }
+  .card{
+    background:var(--glass-bg);
+    border:1px solid var(--glass-border);
+    box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.6);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    border-radius:14px;
+    overflow:hidden;
+    transition:transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .card:hover{
+    transform:translateY(-2px);
+    box-shadow:var(--shadow-md);
+    border-color:rgba(169,129,47,0.3);
+  }
+  .swatch{
+    height:76px;
+    position:relative;
+    background-size:120px 120px;
+  }
+  .swatch::after{
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, transparent 40%, rgba(250,246,236,0.94) 100%);
+  }
+  .card-body{ padding:14px 16px 16px; }
+  .mat{ font-weight:700; font-size:0.98rem; }
+  .grade{ font-size:0.76rem; color:var(--muted); margin-top:2px; }
+  .price-row{
+    display:flex; align-items:baseline; gap:5px;
+    margin-top:10px;
+  }
+  .price{ font-weight:700; font-size:1.05rem; color:var(--navy); }
+  .unit{ font-size:0.72rem; color:var(--muted); }
+  .updated{ font-size:0.72rem; color:var(--muted); margin-top:4px; }
+  .spec-btn{
+    display:inline-flex; align-items:center;
+    margin-top:12px;
+    padding:6px 15px;
+    border-radius:999px;
+    border:1px solid var(--line-strong);
+    color:var(--navy);
+    text-decoration:none;
+    font-size:0.78rem;
+    font-weight:600;
+    transition:background 0.15s ease, border-color 0.15s ease;
+  }
+  .spec-btn:hover{ background:rgba(27,51,88,0.08); border-color:var(--navy); }
+
+  /* ---------- وضعیت‌ها ---------- */
+  .empty, .loading, .error{
+    grid-column:1 / -1;
+    padding:50px 20px;
+    text-align:center;
+    color:var(--muted);
+    font-size:0.9rem;
+    background:var(--glass-bg-2);
+    border:1px solid var(--line);
+    border-radius:14px;
+  }
+  .error{ color:var(--down); }
+  .spinner{
+    width:22px;height:22px;
+    margin:0 auto 12px;
+    border-radius:999px;
+    border:2.5px solid var(--line-strong);
+    border-top-color:var(--gold-strong);
+    animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .foot-note{
+    margin-top:24px;
+    padding:18px 20px;
+    border:1px dashed var(--line-strong);
+    border-radius:14px;
+    background:var(--glass-bg-2);
+    font-size:0.82rem;
+    line-height:2;
+    color:var(--muted);
+  }
+  .foot-note b{ color:var(--navy); }
+
+  @media (max-width:600px){
+    .hero h1{ font-size:1.5rem; }
+    .grid{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
+  }
+
+  :focus-visible{ outline:2px solid var(--gold-strong); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce){
+    .dot, .spinner{ animation:none; }
+    .card{ transition:none; }
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .hero{ background:linear-gradient(90deg, var(--navy) 0%, var(--navy-deep) 100%); }
+    .card, .back-link{ background:#fff; }
+  }
+</style>
+</head>
+<body>
+<div class="board-wrap">
+
+  <div class="top-nav">
+    <a href="index.html" class="brand"><span class="seal">◆</span>پلیمر<span>یکا</span></a>
+    <a href="index.html" class="back-link">بازگشت به سایت</a>
+  </div>
+
+  <div class="hero">
+    <div class="eyebrow mono"><span class="dot"></span> تابلوی قیمت پایه پتروشیمی</div>
+    <h1>قیمت هفته پلیمر</h1>
+    <p>قیمت‌های پایه محصولات پتروشیمی، برگرفته از اعلام رسمی هفتگی و به‌روزرسانی‌شده هر یکشنبه. مبنای مذاکره، نه قیمت قطعی معامله.</p>
+    <div class="hero-meta">
+      <div>
+        <div class="label mono">آخرین به‌روزرسانی</div>
+        <div class="value mono" id="lastUpdate">—</div>
+      </div>
+      <div>
+        <div class="label mono">تعداد اقلام</div>
+        <div class="value mono" id="itemCount">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label mono">PRICE BOARD</div>
+  <div class="section-title">قیمت پایه هر ماده</div>
+
+  <div class="grid" id="rows">
+    <div class="loading"><div class="spinner"></div>در حال دریافت قیمت‌ها…</div>
+  </div>
+
+  <div class="foot-note">
+    <b>درباره این قیمت‌ها:</b> اعداد بالا قیمت پایه رسمی اعلام‌شده توسط دفتر توسعه صنایع تکمیلی پتروشیمی هستند که هر یکشنبه به‌روزرسانی می‌شوند. برای موادی که در جدول بالا نیستند (مانند PC، PA، PU، مستربچ و پلیمر بازیافتی)، چون قیمت بورسی رسمی ندارند، برای استعلام با فروشندگان همین سایت تماس بگیرید.
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = "https://ocviprbkqyozqtpdcbqs.supabase.co";
+const SUPABASE_KEY = "sb_publishable_m-QO6T-aWL-teVtG1dO--Q_SqY0bT-T";
+
+/* ---------- رنگ پایه هر خانواده ماده (برای بافت گرانولی تولیدی، به‌جای عکس هات‌لینک‌شده) ---------- */
+const MATERIAL_COLOR = {
+  "PP":                 "#C7972F",
+  "PP نساجی":           "#C7972F",
+  "PP شیمیایی":         "#B4842A",
+  "PE سنگین (HDPE)":    "#2B6E63",
+  "PE سبک (LDPE)":      "#3E8B97",
+  "PE سبک خطی (LLDPE)": "#3A7D89",
+  "PVC":                "#6E7C8E",
+  "PET":                "#4FA6AD",
+  "PS":                 "#C15C4A",
+  "PS (GPPS)":          "#C97A63",
+  "PC":                 "#7C5FA6",
+  "EPS":                "#D8B36A",
+  "PA/نایلون":          "#7C9A4E",
+  "PU":                 "#A35C7C",
+};
+const DEFAULT_COLOR = "#A9812F";
+
+/* ---------- تولید بافت گرانول SVG بر اساس رنگ ماده (سبک، همیشه لود می‌شود، بدون نیاز به عکس بیرونی) ---------- */
+function shade(hex, percent){
+  hex = hex.replace('#','');
+  const num = parseInt(hex, 16);
+  let r = (num >> 16) + Math.round(2.55 * percent);
+  let g = ((num >> 8) & 0x00FF) + Math.round(2.55 * percent);
+  let b = (num & 0x0000FF) + Math.round(2.55 * percent);
+  r = Math.max(Math.min(255, r), 0);
+  g = Math.max(Math.min(255, g), 0);
+  b = Math.max(Math.min(255, b), 0);
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+function pelletsSvg(colors){
+  // colors: آرایه‌ای از یک یا چند رنگ (برای مستربچ چندرنگ است، چون واقعاً پلت رنگی است)
+  const circles = [
+    [20,24,13], [66,14,9], [96,52,15], [40,70,11], [10,96,9], [80,100,13], [108,18,6], [58,92,8]
+  ];
+  const parts = circles.map((c, i) => {
+    const base = colors[i % colors.length];
+    const tone = i % 2 === 0 ? shade(base, 22) : shade(base, -14);
+    const opacity = 0.35 + (i % 3) * 0.08;
+    return `<circle cx="${c[0]}" cy="${c[1]}" r="${c[2]}" fill="${tone}" opacity="${opacity.toFixed(2)}"/>`;
+  }).join('');
+  const bg = colors[0];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="${bg}"/>${parts}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+function swatchStyle(material){
+  const isMasterbatch = material === "مستربچ";
+  const colors = isMasterbatch
+    ? [MATERIAL_COLOR["PP"], MATERIAL_COLOR["PE سنگین (HDPE)"], MATERIAL_COLOR["PS"], MATERIAL_COLOR["PC"], MATERIAL_COLOR["PA/نایلون"]]
+    : [MATERIAL_COLOR[material] || DEFAULT_COLOR];
+  const url = pelletsSvg(colors);
+  return `background-color:${colors[0]}; background-image:url('${url}');`;
+}
+
+function toJalaliDate(isoDate){
+  try{
+    const d = new Date(isoDate);
+    return new Intl.DateTimeFormat('fa-IR', { year:'numeric', month:'long', day:'numeric' }).format(d);
+  }catch(e){
+    return isoDate;
+  }
+}
+function formatPrice(n){
+  return new Intl.NumberFormat('fa-IR').format(n);
+}
+
+async function loadPrices(){
+  const rowsEl = document.getElementById('rows');
+  try{
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/daily_prices?select=*&order=update_date.desc,material.asc`,
+      {
+        headers:{
+          "apikey": SUPABASE_KEY,
+          "Authorization": `Bearer ${SUPABASE_KEY}`
+        }
+      }
+    );
+    if(!res.ok) throw new Error('network');
+    const data = await res.json();
+
+    if(!data || data.length === 0){
+      rowsEl.innerHTML = `<div class="empty">هنوز قیمتی ثبت نشده. به‌زودی به‌روزرسانی می‌شود.</div>`;
+      return;
+    }
+
+    document.getElementById('itemCount').textContent = data.length;
+    document.getElementById('lastUpdate').textContent = toJalaliDate(data[0].update_date);
+
+    const SLUG_MAP = {
+      "PP":"pp","PP نساجی":"pp-nassaji","PP شیمیایی":"pp-shimiyai",
+      "PE سنگین (HDPE)":"pe-hdpe","PE سبک (LDPE)":"pe-ldpe","PE سبک خطی (LLDPE)":"pe-lldpe",
+      "PVC":"pvc","PET":"pet","PS":"ps","PS (GPPS)":"ps-gpps","PC":"pc"
+    };
+
+    rowsEl.innerHTML = data.map(item => {
+      const slug = SLUG_MAP[item.material];
+      const specLink = slug ? `<a class="spec-btn" href="materials.html#${slug}">مشخصات فنی</a>` : '';
+      return `
+        <div class="card">
+          <div class="swatch" style="${swatchStyle(item.material)}" aria-hidden="true"></div>
+          <div class="card-body">
+            <div class="mat">${item.material}</div>
+            <div class="grade mono">${item.grade || ''}</div>
+            <div class="price-row">
+              <span class="price mono">${formatPrice(item.price_toman)}</span>
+              <span class="unit">تومان / ${item.unit || 'kg'}</span>
+            </div>
+            <div class="updated mono">${toJalaliDate(item.update_date)}</div>
+            ${specLink}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  }catch(err){
+    rowsEl.innerHTML = `<div class="error">مشکلی در دریافت قیمت‌ها پیش آمد. لطفاً دوباره تلاش کنید.</div>`;
+  }
+}
+
+loadPrices();
+</script>
+</body>
+</html>
