@@ -87,24 +87,13 @@ const db = {
     return true;
   },
   async upsertProfile(profile) {
-    // Phone number is our login key. Always check for an existing profile with
-    // this phone first, so returning users get their SAME account back instead
-    // of a brand-new one each time they log in (which was orphaning their ads).
-    const { data: existing, error: findErr } = await sb.from("profiles")
-      .select("*").eq("phone", profile.phone)
-      .order("created_at", { ascending: true }).limit(1).maybeSingle();
-    if (findErr) { console.error("findProfile", findErr); }
-    if (existing) {
-      const { data, error } = await sb.from("profiles")
-        .update({ name: profile.name, company: profile.company })
-        .eq("id", existing.id).select().single();
-      if (error) { console.error("updateProfile", error); return existing; }
-      return data;
-    }
-    const { data, error } = await sb.from("profiles")
-      .insert([{ name: profile.name, phone: profile.phone, company: profile.company, referred_by: profile.referredBy || null }])
-      .select().single();
-    if (error) { console.error("insertProfile", error); db.lastError = error; return null; }
+    // Phone number is our login key. This goes through a locked-down server-side
+    // function (RPC) instead of the profiles table directly, so phone numbers
+    // and names can't be bulk-read by anyone with the public anon key.
+    const { data, error } = await sb.rpc("login_or_update_profile", {
+      p_name: profile.name, p_phone: profile.phone, p_company: profile.company, p_referred_by: profile.referredBy || null,
+    });
+    if (error) { console.error("upsertProfile", error); db.lastError = error; return null; }
     db.lastError = null;
     return data;
   },
@@ -121,14 +110,14 @@ const db = {
     return data;
   },
   async listInvoices(userId) {
-    const { data, error } = await sb.from("invoices").select("*").eq("user_id", userId).order("created_at", { ascending: false });
+    const { data, error } = await sb.rpc("get_invoices_by_user", { p_user_id: userId });
     if (error) { console.error("listInvoices", error); return []; }
     return data || [];
   },
   async countReferrals(userId) {
-    const { count, error } = await sb.from("profiles").select("id", { count: "exact", head: true }).eq("referred_by", userId);
+    const { data, error } = await sb.rpc("get_referral_count", { p_user_id: userId });
     if (error) { console.error("countReferrals", error); return 0; }
-    return count || 0;
+    return data || 0;
   },
   async insertInvoice(inv) {
     const { error } = await sb.from("invoices").insert([inv]);
@@ -361,9 +350,18 @@ const PRIVACY_POINTS = [
   { t: "کوکی و ذخیره محلی مرورگر", d: "برای نگه‌داشتن نشست ورود شما، اطلاعاتی مانند شناسه کاربری در حافظه محلی مرورگر (localStorage) ذخیره می‌شود؛ این اطلاعات به سرور شخص ثالثی ارسال نمی‌شود." },
 ];
 
+// تبدیل ارقام فارسی/عربی به انگلیسی، چون شماره‌هایی که با کیبورد فارسی تایپ می‌شوند
+// معمولاً با ارقام ۰۱۲۳... هستند و اعتبارسنجی قبلی فقط ارقام انگلیسی را قبول می‌کرد.
+function toEnglishDigits(str) {
+  const fa = "۰۱۲۳۴۵۶۷۸۹", ar = "٠١٢٣٤٥٦٧٨٩";
+  return (str || "").replace(/[۰-۹٠-٩]/g, (d) => {
+    const i = fa.indexOf(d);
+    return String(i > -1 ? i : ar.indexOf(d));
+  });
+}
 // شماره موبایل ایران باید ۱۱ رقم باشد و با ۰۹ شروع شود (مثال: 09123456789)
 function isValidIranPhone(phone) {
-  const digits = (phone || "").replace(/[\s-]/g, "");
+  const digits = toEnglishDigits(phone).replace(/[\s-]/g, "");
   return /^09\d{9}$/.test(digits);
 }
 function timeAgo(ts) {
@@ -452,7 +450,8 @@ export default function PolymerMarket() {
     e.preventDefault();
     if (!loginForm.name || !loginForm.phone) { showToast("نام و شماره تماس الزامی است."); return; }
     if (!isValidIranPhone(loginForm.phone)) { showToast("شماره موبایل معتبر نیست. باید ۱۱ رقم باشد و با ۰۹ شروع شود (مثال: 09123456789)."); return; }
-    const row = await db.upsertProfile({ name: loginForm.name, phone: loginForm.phone, company: loginForm.company, referredBy });
+    const normalizedPhone = toEnglishDigits(loginForm.phone).replace(/[\s-]/g, "");
+    const row = await db.upsertProfile({ name: loginForm.name, phone: normalizedPhone, company: loginForm.company, referredBy });
     if (!row) { showToast("اتصال به سامانه ناموفق بود. خطا: " + (db.lastError ? (db.lastError.message || db.lastError.code || JSON.stringify(db.lastError)) : "نامشخص")); return; }
     const u = { id: row.id, name: row.name, phone: row.phone, company: row.company };
     setUser(u);
@@ -1650,30 +1649,3 @@ function BottomNav({ tab, setTab, onMore }) {
       </button>
       <button onClick={() => setTab("my")} className={`flex flex-col items-center gap-1 text-[10px] ${tab==="my"?"pm-navy font-bold":"pm-muted"}`}>
         <Icon name="package" size={18} /> آگهی‌های من
-      </button>
-      <button onClick={onMore} className="flex flex-col items-center gap-1 text-[10px] pm-muted">
-        <Icon name="menu" size={18} /> منو
-      </button>
-    </div>
-  );
-}
-
-function Footer({ setTab }) {
-  return (
-    <footer className="pm-panel border-t pm-line mt-20 pb-20 md:pb-8 pt-10">
-      <div className="max-w-6xl mx-auto px-4 md:px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-xs pm-muted">
-        <div className="flex items-center gap-2">
-          <Icon name="layers" size={18} className="pm-navy" />
-          <span className="font-bold pm-navy text-sm">پلیمر بازار</span>
-          <span>— سامانه تخصصی بازار پلیمر و پلاستیک</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button onClick={() => setTab("rules")} className="hover:underline">قوانین</button>
-          <button onClick={() => setTab("privacy")} className="hover:underline">حریم خصوصی</button>
-          <button onClick={() => setTab("pricing")} className="hover:underline">تعرفه‌ها</button>
-          <button onClick={() => setTab("about")} className="hover:underline">درباره ما</button>
-        </div>
-      </div>
-    </footer>
-  );
-}
