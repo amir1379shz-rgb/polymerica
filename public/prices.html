@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>قیمت هفته پلیمر | پلیمریکا</title>
+<title>قیمت هفته پلیمر | پلیمر بازار</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -16,6 +16,7 @@
     --gold-soft:#E4C878;
     --line:rgba(19,32,57,0.12);
     --muted:#5b6478;
+    --stale:#B4432F;
   }
   *{box-sizing:border-box;}
   body{
@@ -38,7 +39,8 @@
   .hero .eyebrow{ font-family:'Space Mono',monospace; font-size:0.7rem; letter-spacing:0.1em; color:var(--gold-soft); text-transform:uppercase; margin-bottom:8px; }
   .hero h1{ font-size:1.5rem; font-weight:800; margin:0 0 6px; }
   .hero p{ margin:0; font-size:0.85rem; color:rgba(243,238,227,0.72); line-height:1.8; }
-  .hero .meta{ display:flex; gap:18px; margin-top:14px; font-family:'Space Mono',monospace; font-size:0.72rem; color:var(--gold-soft); }
+  .hero .meta{ display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:14px; font-family:'Space Mono',monospace; font-size:0.72rem; color:var(--gold-soft); }
+  .hero .meta span{ white-space:nowrap; }
 
   .search-box{ margin-bottom:14px; }
   .search-box input{
@@ -80,6 +82,8 @@
   .grade-price .p{ font-family:'Space Mono',monospace; font-weight:700; font-size:0.86rem; color:var(--navy); }
   .grade-price .u{ font-size:0.68rem; color:var(--muted); }
   .grade-price .d{ font-family:'Space Mono',monospace; font-size:0.68rem; color:var(--muted); margin-top:2px; }
+  .grade-price .d.stale{ color:var(--stale); }
+  .grade-price .d.stale::after{ content:" (قدیمی)"; }
 
   .empty,.loading,.error{ padding:50px 20px; text-align:center; color:var(--muted); font-size:0.9rem; }
   .error{ color:#B4432F; }
@@ -97,17 +101,18 @@
 <div class="wrap">
 
   <div class="top-nav">
-    <a href="index.html" class="brand">پلیمر<span>یکا</span></a>
+    <a href="index.html" class="brand">پلیمر بازار</a>
     <a href="index.html" class="back-link">بازگشت به سایت</a>
   </div>
 
   <div class="hero">
     <div class="eyebrow">تابلوی قیمت پایه پتروشیمی</div>
     <h1>قیمت هفته پلیمر</h1>
-    <p>قیمت‌های پایه رسمی محصولات پتروشیمی، به‌تفکیک هر گرید مشخص، برگرفته از اعلام رسمی بورس کالا و به‌روزرسانی‌شده هر یکشنبه.</p>
+    <p>قیمت‌های پایه رسمی محصولات پتروشیمی، به‌تفکیک هر گرید مشخص، برگرفته از اعلام رسمی بورس کالا و به‌روزرسانی‌شده به‌صورت روزانه.</p>
     <div class="meta">
       <span id="familyCount">—</span>
       <span id="gradeCount">—</span>
+      <span id="lastUpdated">—</span>
     </div>
   </div>
 
@@ -120,7 +125,7 @@
   </div>
 
   <div class="foot-note">
-    <b>درباره این قیمت‌ها:</b> اعداد بالا قیمت پایه رسمی اعلام‌شده توسط دفتر توسعه صنایع تکمیلی پتروشیمی هستند که هر یکشنبه به‌روزرسانی می‌شوند. برای موادی که در جدول بالا نیستند، برای استعلام با فروشندگان همین سایت تماس بگیرید.
+    <b>درباره این قیمت‌ها:</b> اعداد بالا قیمت پایه رسمی اعلام‌شده توسط دفتر توسعه صنایع تکمیلی پتروشیمی هستند که به‌صورت روزانه بررسی و در صورت وجود معامله جدید به‌روزرسانی می‌شوند. اگر گریدی مدتی در بورس معامله نشده باشد، آخرین قیمت واقعی همان معامله نمایش داده می‌شود و با علامت «قدیمی» مشخص شده. برای موادی که در جدول بالا نیستند، برای استعلام با فروشندگان همین سایت تماس بگیرید.
   </div>
 
 </div>
@@ -139,11 +144,19 @@ const SLUG_MAP = {
 // Order families should appear in (falls back to alphabetical for anything not listed)
 const FAMILY_ORDER = ["PP","PP نساجی","PP شیمیایی","PP فیلم","PE سنگین (HDPE)","PE سبک (LDPE)","PE سبک خطی (LLDPE)","PVC","PET","PS","EPS","PC","ABS","PA/نایلون","PU","مستربچ"];
 
+// قیمتی که بیش از این تعداد روز از آخرین معامله‌اش گذشته، به‌عنوان «قدیمی» علامت‌گذاری می‌شود
+const STALE_AFTER_DAYS = 30;
+
 function toJalaliDate(isoDate){
   try{ return new Intl.DateTimeFormat('fa-IR',{year:'numeric',month:'long',day:'numeric'}).format(new Date(isoDate)); }
   catch(e){ return isoDate; }
 }
 function formatPrice(n){ return new Intl.NumberFormat('fa-IR').format(n); }
+function daysSince(isoDate){
+  const then = new Date(isoDate).getTime();
+  if (Number.isNaN(then)) return 0;
+  return Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
+}
 
 let ALL_ROWS = [];
 
@@ -190,15 +203,18 @@ function render(filterText){
         </button>
         ${specLink}
         <div class="grades">
-          ${rows.map(r => `
+          ${rows.map(r => {
+            const stale = daysSince(r.update_date) > STALE_AFTER_DAYS;
+            return `
             <div class="grade-row">
               <div class="grade-name">${r.grade}</div>
               <div class="grade-price">
                 <div class="p">${formatPrice(r.price_toman)}<span class="u"> / ${r.unit || 'kg'}</span></div>
-                <div class="d">${toJalaliDate(r.update_date)}</div>
+                <div class="d${stale ? ' stale' : ''}">${toJalaliDate(r.update_date)}</div>
               </div>
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       </div>
     `;
@@ -222,6 +238,8 @@ async function loadPrices(){
     const familyCount = new Set(data.map(r => r.material)).size;
     document.getElementById('familyCount').textContent = `${familyCount} دسته ماده`;
     document.getElementById('gradeCount').textContent = `${data.length} گرید`;
+    const newestDate = data.reduce((max, r) => (r.update_date > max ? r.update_date : max), data[0].update_date);
+    document.getElementById('lastUpdated').textContent = `آخرین معامله ثبت‌شده: ${toJalaliDate(newestDate)}`;
     render('');
   }catch(err){
     listEl.innerHTML = `<div class="error">مشکلی در دریافت قیمت‌ها پیش آمد. لطفاً دوباره تلاش کنید.</div>`;
@@ -233,3 +251,4 @@ loadPrices();
 </script>
 </body>
 </html>
+
