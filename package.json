@@ -1,5 +1,5 @@
 {
-  "name": "polymerica",
+  "name": "bazarpolymer",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
+    "heic2any": "^0.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -21,3 +22,4 @@
     "vite": "^5.4.8"
   }
 }
+
