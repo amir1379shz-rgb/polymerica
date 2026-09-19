@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>قیمت هفته پلیمر | بازار پلیمر</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F3EEE3;
+    --navy:#132039;
+    --navy-deep:#0B1626;
+    --gold:#8a6220;
+    --gold-strong:#a9812f;
+    --gold-soft:#E4C878;
+    --line:rgba(19,32,57,0.12);
+    --muted:#5b6478;
+    --stale:#B4432F;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--cream);
+    color:var(--navy);
+    font-family:'Vazirmatn',sans-serif;
+    min-height:100vh;
+  }
+  .wrap{ max-width:820px; margin:0 auto; padding:24px 16px 60px; }
+  .top-nav{ display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  .brand{ font-weight:800; font-size:1.1rem; color:var(--navy); text-decoration:none; }
+  .brand span{ color:var(--gold-strong); }
+  .back-link{ font-size:0.82rem; color:var(--navy); opacity:0.65; text-decoration:none; border:1px solid var(--line); padding:6px 14px; border-radius:100px; }
+
+  .hero{
+    background:linear-gradient(180deg,var(--navy) 0%,var(--navy-deep) 100%);
+    border-radius:16px; padding:26px 22px; color:var(--cream); margin-bottom:16px;
+  }
+  .hero .eyebrow{ font-family:'Space Mono',monospace; font-size:0.7rem; letter-spacing:0.1em; color:var(--gold-soft); text-transform:uppercase; margin-bottom:8px; }
+  .hero h1{ font-size:1.5rem; font-weight:800; margin:0 0 6px; }
+  .hero p{ margin:0; font-size:0.85rem; color:rgba(243,238,227,0.72); line-height:1.8; }
+  .hero .meta{ display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:14px; font-family:'Space Mono',monospace; font-size:0.72rem; color:var(--gold-soft); }
+  .hero .meta span{ white-space:nowrap; }
+
+  .search-box{ margin-bottom:14px; }
+  .search-box input{
+    width:100%; padding:11px 14px; border-radius:12px; border:1px solid var(--line);
+    background:#fff; font-family:'Vazirmatn',sans-serif; font-size:0.9rem; color:var(--navy);
+  }
+  .search-box input:focus{ outline:2px solid var(--gold-strong); outline-offset:1px; }
+
+  .family{
+    background:#fff; border:1px solid var(--line); border-radius:14px; margin-bottom:10px; overflow:hidden;
+  }
+  .family-head{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    width:100%; padding:14px 16px; background:none; border:none; text-align:right;
+    cursor:pointer; font-family:'Vazirmatn',sans-serif;
+  }
+  .family-head:focus-visible{ outline:2px solid var(--gold-strong); outline-offset:-2px; }
+  .family-name{ font-weight:700; font-size:0.98rem; color:var(--navy); }
+  .family-sub{ font-size:0.75rem; color:var(--muted); margin-top:2px; font-family:'Space Mono',monospace; }
+  .family-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .family-range{ font-family:'Space Mono',monospace; font-size:0.8rem; color:var(--navy); font-weight:700; white-space:nowrap; }
+  .chevron{ transition:transform 0.18s ease; color:var(--gold-strong); flex-shrink:0; }
+  .family.open .chevron{ transform:rotate(180deg); }
+
+  .spec-link{
+    display:inline-block; margin:0 16px 14px; padding:6px 14px; border-radius:999px;
+    border:1px solid var(--navy); color:var(--navy); text-decoration:none; font-size:0.78rem; font-weight:700;
+  }
+
+  .grades{ display:none; border-top:1px solid var(--line); }
+  .family.open .grades{ display:block; }
+  .grade-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 16px; border-top:1px solid var(--line);
+  }
+  .grade-row:first-child{ border-top:none; }
+  .grade-name{ font-size:0.85rem; color:var(--navy); flex:1; min-width:0; }
+  .grade-price{ text-align:left; flex-shrink:0; }
+  .grade-price .p{ font-family:'Space Mono',monospace; font-weight:700; font-size:0.86rem; color:var(--navy); }
+  .grade-price .u{ font-size:0.68rem; color:var(--muted); }
+  .grade-price .d{ font-family:'Space Mono',monospace; font-size:0.68rem; color:var(--muted); margin-top:2px; }
+  .grade-price .d.stale{ color:var(--stale); }
+  .grade-price .d.stale::after{ content:" (قدیمی)"; }
+
+  .empty,.loading,.error{ padding:50px 20px; text-align:center; color:var(--muted); font-size:0.9rem; }
+  .error{ color:#B4432F; }
+
+  .foot-note{
+    margin-top:18px; padding:16px 18px; border:1px dashed var(--line); border-radius:14px;
+    font-size:0.8rem; line-height:1.9; color:var(--muted);
+  }
+  .foot-note b{ color:var(--navy); }
+
+  :focus-visible{ outline:2px solid var(--gold-strong); outline-offset:2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top-nav">
+    <a href="index.html" class="brand">بازار پلیمر</a>
+    <a href="index.html" class="back-link">بازگشت به سایت</a>
+  </div>
+
+  <div class="hero">
+    <div class="eyebrow">تابلوی قیمت پایه پتروشیمی</div>
+    <h1>قیمت هفته پلیمر</h1>
+    <p>قیمت‌های پایه رسمی محصولات پتروشیمی، به‌تفکیک هر گرید مشخص، برگرفته از اعلام رسمی بورس کالا و به‌روزرسانی‌شده به‌صورت روزانه.</p>
+    <div class="meta">
+      <span id="familyCount">—</span>
+      <span id="gradeCount">—</span>
+      <span id="lastUpdated">—</span>
+    </div>
+  </div>
+
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="جست‌وجوی گرید یا ماده (مثلاً: HDPE، PET، 1540)…">
+  </div>
+
+  <div id="list">
+    <div class="loading">در حال دریافت قیمت‌ها…</div>
+  </div>
+
+  <div class="foot-note">
+    <b>درباره این قیمت‌ها:</b> اعداد بالا قیمت پایه رسمی اعلام‌شده توسط دفتر توسعه صنایع تکمیلی پتروشیمی هستند که به‌صورت روزانه بررسی و در صورت وجود معامله جدید به‌روزرسانی می‌شوند. اگر گریدی مدتی در بورس معامله نشده باشد، آخرین قیمت واقعی همان معامله نمایش داده می‌شود و با علامت «قدیمی» مشخص شده. برای موادی که در جدول بالا نیستند، برای استعلام با فروشندگان همین سایت تماس بگیرید.
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = "https://ocviprbkqyozqtpdcbqs.supabase.co";
+const SUPABASE_KEY = "sb_publishable_m-QO6T-aWL-teVtG1dO--Q_SqY0bT-T";
+
+const SLUG_MAP = {
+  "PP":"pp","PP نساجی":"pp-nassaji","PP شیمیایی":"pp-shimiyai","PP فیلم":"pp-film",
+  "PE سنگین (HDPE)":"pe-hdpe","PE سبک (LDPE)":"pe-ldpe","PE سبک خطی (LLDPE)":"pe-lldpe",
+  "PVC":"pvc","PET":"pet","PS":"ps","EPS":"eps","PC":"pc","ABS":"abs",
+  "PA/نایلون":"pa-nylon","PU":"pu","مستربچ":"masterbatch",
+};
+
+// Order families should appear in (falls back to alphabetical for anything not listed)
+const FAMILY_ORDER = ["PP","PP نساجی","PP شیمیایی","PP فیلم","PE سنگین (HDPE)","PE سبک (LDPE)","PE سبک خطی (LLDPE)","PVC","PET","PS","EPS","PC","ABS","PA/نایلون","PU","مستربچ"];
+
+// قیمتی که بیش از این تعداد روز از آخرین معامله‌اش گذشته، به‌عنوان «قدیمی» علامت‌گذاری می‌شود
+const STALE_AFTER_DAYS = 30;
+
+function toJalaliDate(isoDate){
+  try{ return new Intl.DateTimeFormat('fa-IR',{year:'numeric',month:'long',day:'numeric'}).format(new Date(isoDate)); }
+  catch(e){ return isoDate; }
+}
+function formatPrice(n){ return new Intl.NumberFormat('fa-IR').format(n); }
+function daysSince(isoDate){
+  const then = new Date(isoDate).getTime();
+  if (Number.isNaN(then)) return 0;
+  return Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
+}
+
+let ALL_ROWS = [];
+
+function render(filterText){
+  const listEl = document.getElementById('list');
+  const q = (filterText || '').trim();
+
+  const byFamily = {};
+  for (const row of ALL_ROWS) {
+    if (q && !row.grade.includes(q) && !row.material.includes(q)) continue;
+    (byFamily[row.material] = byFamily[row.material] || []).push(row);
+  }
+  const families = Object.keys(byFamily).sort((a,b) => {
+    const ia = FAMILY_ORDER.indexOf(a), ib = FAMILY_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  if (families.length === 0) {
+    listEl.innerHTML = `<div class="empty">چیزی با این جست‌وجو پیدا نشد.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = families.map(fam => {
+    const rows = byFamily[fam].sort((a,b) => a.grade.localeCompare(b.grade));
+    const prices = rows.map(r => r.price_toman);
+    const min = Math.min(...prices), max = Math.max(...prices);
+    const rangeText = min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`;
+    const slug = SLUG_MAP[fam];
+    const specLink = slug ? `<a class="spec-link" href="materials.html#${slug}">مشخصات فنی ${fam}</a>` : '';
+    return `
+      <div class="family">
+        <button class="family-head" onclick="const f=this.closest('.family'); f.classList.toggle('open'); this.setAttribute('aria-expanded', f.classList.contains('open'));" aria-expanded="false">
+          <div>
+            <div class="family-name">${fam}</div>
+            <div class="family-sub">${rows.length} گرید</div>
+          </div>
+          <div class="family-right">
+            <span class="family-range">${rangeText} <span style="font-weight:400;color:var(--muted);font-size:0.72rem;">تومان</span></span>
+            <svg class="chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+        </button>
+        ${specLink}
+        <div class="grades">
+          ${rows.map(r => {
+            const stale = daysSince(r.update_date) > STALE_AFTER_DAYS;
+            return `
+            <div class="grade-row">
+              <div class="grade-name">${r.grade}</div>
+              <div class="grade-price">
+                <div class="p">${formatPrice(r.price_toman)}<span class="u"> / ${r.unit || 'kg'}</span></div>
+                <div class="d${stale ? ' stale' : ''}">${toJalaliDate(r.update_date)}</div>
+              </div>
+            </div>
+          `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadPrices(){
+  const listEl = document.getElementById('list');
+  try{
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/daily_prices?select=*&order=material.asc,grade.asc`,
+      { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+    );
+    if(!res.ok) throw new Error('network');
+    const data = await res.json();
+    if(!data || data.length === 0){
+      listEl.innerHTML = `<div class="empty">هنوز قیمتی ثبت نشده. به‌زودی به‌روزرسانی می‌شود.</div>`;
+      return;
+    }
+    ALL_ROWS = data;
+    const familyCount = new Set(data.map(r => r.material)).size;
+    document.getElementById('familyCount').textContent = `${familyCount} دسته ماده`;
+    document.getElementById('gradeCount').textContent = `${data.length} گرید`;
+    const newestDate = data.reduce((max, r) => (r.update_date > max ? r.update_date : max), data[0].update_date);
+    document.getElementById('lastUpdated').textContent = `آخرین معامله ثبت‌شده: ${toJalaliDate(newestDate)}`;
+    render('');
+  }catch(err){
+    listEl.innerHTML = `<div class="error">مشکلی در دریافت قیمت‌ها پیش آمد. لطفاً دوباره تلاش کنید.</div>`;
+  }
+}
+
+document.getElementById('searchInput').addEventListener('input', (e) => render(e.target.value));
+loadPrices();
+</script>
+</body>
+</html>
