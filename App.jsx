@@ -742,27 +742,6 @@ function Home({ listings, goMarket, goPost, openDetail }) {
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-4 md:px-6 pb-10">
-        <a href="/prices.html" className="group flex items-center justify-between gap-4 rounded-2xl px-6 py-5 md:px-8 md:py-6 pm-glass-dark">
-          <div className="flex items-center gap-4">
-            <span className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/10" style={{background:"rgba(169,129,47,0.22)", backdropFilter:"blur(8px)"}}>
-              <Icon name="trendingUp" size={22} className="pm-gold-bright" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="w-1.5 h-1.5 rounded-full pm-gold" style={{background:"#A9812F",display:"inline-block"}}></span>
-                <span className="pm-mono text-[11px] tracking-wider" style={{color:"#C9A94F"}}>به‌روزرسانی هفتگی</span>
-              </div>
-              <div className="text-white font-bold text-base md:text-lg">قیمت هفته پلیمر را ببینید</div>
-              <div className="text-[13px]" style={{color:"rgba(244,241,232,0.65)"}}>قیمت‌های پایه رسمی پتروشیمی برای PP، PE، PVC، PET و PS</div>
-            </div>
-          </div>
-          <span className="hidden md:flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold flex-shrink-0 transition-transform group-hover:translate-x-[-2px]" style={{background:"#A9812F",color:"#211A0A"}}>
-            مشاهده تابلو <Icon name="chevronLeft" size={15} />
-          </span>
-        </a>
-      </section>
-
       <section className="max-w-6xl mx-auto px-4 md:px-6 pb-14">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">همه آگهی‌ها</h2>
