@@ -1590,7 +1590,6 @@ function MoreSheet({ onClose, setTab, user, isPaid, onLogout, referralCount, sho
             <button onClick={() => setTab("post")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="plus" size={18} /> ثبت آگهی جدید</button>
             <button onClick={() => setTab("my")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="package" size={18} /> آگهی‌های من</button>
             <button onClick={() => setTab("pricing")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="crown" size={18} /> تعرفه اشتراک</button>
-            <a href="/prices.html" className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="trendingUp" size={18} /> تابلوی قیمت هفته</a>
             <hr className="my-2 pm-line" />
             <button onClick={() => setTab("rules")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="fileText" size={18} /> قوانین و مقررات</button>
             <button onClick={() => setTab("privacy")} className="flex items-center gap-3 p-2.5 rounded-lg text-sm hover:bg-black/5"><Icon name="shieldCheck" size={18} /> حریم خصوصی</button>
